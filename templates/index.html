@@ -1,0 +1,50 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flest Fridager - Kalender</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        .off { background-color: #c8e6c9; }  /* highlight off days */
+    </style>
+</head>
+<body>
+    <h1>Flest Fridager - Kalender</h1>
+
+    <form method="post">
+        <label>
+            <input type="checkbox" name="weekend_off" value="yes">
+            Har du fri i helgen? (Lørdag og Søndag)
+        </label><br>
+        <label>
+            <input type="checkbox" name="squeeze_day" value="yes">
+            Ønsker du å ta fri på inneklemte dager?
+        </label><br>
+        <label>
+            PTO-dager for inneklemming:
+            <input type="number" name="pto_budget" value="21" min="0">
+        </label><br>
+        <button type="submit">Bygg kalender</button>
+    </form>
+
+    <h2>Kalender for 2025</h2>
+    <table>
+        <tr>
+            <th>Dato</th>
+            <th>Fri?</th>
+            <th>Vekt</th>
+            <th>Ukedag</th>
+        </tr>
+        {% for day in calendar %}
+        <tr class="{% if day[1] %}off{% endif %}">
+            <td>{{ day[0] }}</td>
+            <td>{{ day[1] }}</td>
+            <td>{{ day[2] }}</td>
+            <td>{{ day[3] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
