@@ -1,0 +1,477 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c2430;
+  --muted: #5d6878;
+  --border: #e2e6ec;
+  --accent: #1f6feb;
+  --header-bg: #0f2a47;
+  --header-text: #ffffff;
+
+  --holiday: #c8102e;
+  --holiday-bg: #fde8eb;
+  --weekend-bg: #eef0f4;
+  --weekend-text: #6b7585;
+  --squeeze: #d99a00;
+  --suggested-bg: #1f9d55;
+  --suggested-text: #ffffff;
+  --own-bg: #1f6feb;
+  --own-text: #ffffff;
+
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141b;
+    --surface: #171e27;
+    --text: #e6ebf2;
+    --muted: #9aa6b6;
+    --border: #2a3441;
+    --accent: #5b9bff;
+    --header-bg: #0b1f36;
+
+    --holiday: #ff6b7f;
+    --holiday-bg: #3a1a22;
+    --weekend-bg: #1f2833;
+    --weekend-text: #8e9aab;
+    --squeeze: #f2b630;
+    --suggested-bg: #2fb36a;
+    --own-bg: #4c8dff;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---------- Topp og bunn ---------- */
+
+.site-header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding: 28px 0 24px;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 4px 0 0;
+  opacity: 0.85;
+}
+
+.site-footer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 32px 0;
+}
+
+/* ---------- Layout ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.panel h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+
+.settings {
+  position: sticky;
+  top: 16px;
+}
+
+.content {
+  min-width: 0;
+}
+
+/* ---------- Skjema ---------- */
+
+.field {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+input[type="number"],
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+#budget,
+select {
+  width: 100%;
+}
+
+.inline {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.inline input {
+  width: 64px;
+  padding: 6px 8px;
+}
+
+.inline.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+
+.hint.warn {
+  color: var(--holiday);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  font: inherit;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 20px;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-secondary {
+  font: inherit;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- Oppsummering ---------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.stat strong {
+  display: block;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.periods {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.periods li {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--suggested-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.periods li.empty {
+  border-left-color: var(--border);
+  color: var(--muted);
+}
+
+.period-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.badge {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--suggested-bg);
+}
+
+.period-dates {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.squeeze-list {
+  margin-top: 16px;
+}
+
+.squeeze-list summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.squeeze-list ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.squeeze-list li.past {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* ---------- Forklaring ---------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 18px 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sw {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.sw-holiday { background: var(--holiday-bg); border: 1px solid var(--holiday); }
+.sw-weekend { background: var(--weekend-bg); }
+.sw-squeeze { border: 2px dashed var(--squeeze); }
+.sw-suggested { background: var(--suggested-bg); }
+.sw-own { background: var(--own-bg); }
+
+/* ---------- Kalender ---------- */
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.month {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.month h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.month table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+
+.month th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
+.month td {
+  padding: 0;
+  text-align: center;
+}
+
+.month .wk {
+  font-size: 0.7rem;
+  color: var(--muted);
+  opacity: 0.7;
+  width: 2.2em;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: transparent;
+  border: 2px solid transparent;
+  padding: 0;
+}
+
+button.day {
+  cursor: pointer;
+}
+
+button.day:hover {
+  border-color: var(--accent);
+}
+
+button.day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.day.weekend {
+  background: var(--weekend-bg);
+  color: var(--weekend-text);
+}
+
+.day.holiday,
+.day.extra {
+  background: var(--holiday-bg);
+  color: var(--holiday);
+  font-weight: 700;
+}
+
+.day.squeeze {
+  border: 2px dashed var(--squeeze);
+}
+
+.day.suggested {
+  background: var(--suggested-bg);
+  color: var(--suggested-text);
+  font-weight: 700;
+}
+
+.day.own {
+  background: var(--own-bg);
+  color: var(--own-text);
+  font-weight: 700;
+}
+
+.day.past {
+  opacity: 0.4;
+}
+
+.day.today {
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+/* ---------- Mobil ---------- */
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings {
+    position: static;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .site-header h1 {
+    font-size: 1.6rem;
+  }
+}

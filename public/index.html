@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flest Fridager – planlegg feriedagene smart</title>
+  <meta name="description" content="Se røde dager og inneklemte dager, og finn ut hvordan du får flest mulig fridager ut av feriedagene dine.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏖️</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>Flest&nbsp;Fridager</h1>
+      <p class="tagline">Finn de smarteste dagene å ta fri – røde dager, inneklemte dager og en ferdig ferieplan.</p>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <aside class="panel settings" aria-label="Innstillinger">
+      <h2>Innstillinger</h2>
+
+      <div class="field">
+        <span class="label">År</span>
+        <div class="segmented" id="year-picker" role="radiogroup" aria-label="Velg år"></div>
+      </div>
+
+      <div class="field">
+        <label class="label" for="budget" id="budget-label">Feriedager</label>
+        <input type="number" id="budget" min="0" max="60" value="25" inputmode="numeric">
+        <small class="hint" id="budget-hint"></small>
+      </div>
+
+      <div class="field">
+        <label class="label" for="strategy">Hva ønsker du deg?</label>
+        <select id="strategy">
+          <option value="4">Langhelger (minst 4 dager fri i strekk)</option>
+          <option value="5" selected>Balansert (minst 5 dager i strekk)</option>
+          <option value="9">Lengre ferier (minst 9 dager i strekk)</option>
+          <option value="1">Ingen krav (flest mulig fridager)</option>
+        </select>
+      </div>
+
+      <fieldset class="field">
+        <legend class="label">Sommerferie</legend>
+        <label class="check"><input type="checkbox" id="summer-on" checked> Sett av sommerferie først</label>
+        <div class="inline" id="summer-fields">
+          <label>fra uke <input type="number" id="summer-week" min="1" max="52" value="28"></label>
+          <label>i <input type="number" id="summer-weeks" min="1" max="6" value="3"> uker</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend class="label">Jeg har også fri</legend>
+        <label class="check"><input type="checkbox" id="opt-julaften"> Julaften (24.12)</label>
+        <label class="check"><input type="checkbox" id="opt-nyttarsaften"> Nyttårsaften (31.12)</label>
+      </fieldset>
+
+      <p class="hint">Tips: klikk på en arbeidsdag i kalenderen for å legge inn egne feriedager. Planen tilpasser seg automatisk.</p>
+      <button type="button" class="btn-secondary" id="reset-own">Fjern egne feriedager</button>
+    </aside>
+
+    <section class="content">
+      <div class="panel summary" aria-live="polite">
+        <div class="stats" id="stats"></div>
+        <h2>Ferieplan</h2>
+        <ol class="periods" id="periods"></ol>
+        <details class="squeeze-list">
+          <summary>Inneklemte dager</summary>
+          <ul id="squeeze-days"></ul>
+        </details>
+      </div>
+
+      <div class="legend" aria-label="Forklaring">
+        <span><i class="sw sw-holiday"></i>Rød dag</span>
+        <span><i class="sw sw-weekend"></i>Helg</span>
+        <span><i class="sw sw-squeeze"></i>Inneklemt dag</span>
+        <span><i class="sw sw-suggested"></i>Foreslått feriedag</span>
+        <span><i class="sw sw-own"></i>Egen feriedag</span>
+      </div>
+
+      <div class="calendar" id="calendar"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      Helligdagene regnes ut automatisk. Innstillingene lagres kun i din egen nettleser.
+    </div>
+  </footer>
+
+  <script src="js/holidays.js"></script>
+  <script src="js/planner.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
