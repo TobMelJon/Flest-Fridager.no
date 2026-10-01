@@ -33,34 +33,53 @@ test("fredag etter Kristi himmelfart 2026 er inneklemt", () => {
   assert.strictEqual(days.filter((d) => d.squeeze).length, 1);
 });
 
-test("optimalisering med 1 dag gir 4 dager fri i mai 2026", () => {
-  const days = P.buildDays("2026-05-01", "2026-05-31");
-  const res = P.optimize(days, 1);
-  // Fredag etter Kristi himmelfart og tirsdag etter 2. pinsedag gir begge 4 dager.
-  assert.strictEqual(res.chosen.length, 1);
-  assert.ok(["2026-05-15", "2026-05-26"].includes(days[res.chosen[0]].key));
-  assert.strictEqual(res.gained, 4);
+test("vanlig periodelengde (baseline) for man–fre og 4-dagers uke", () => {
+  assert.deepStrictEqual(P.baselineTable([1, 2, 3, 4, 5], 10), [0, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16]);
+  assert.deepStrictEqual(P.baselineTable([1, 2, 3, 4], 5), [0, 4, 5, 6, 10, 11]);
 });
 
-test("egne feriedager respekteres og telles ikke som ny gevinst", () => {
+test("inneklemt dag gir 1 ekstra fridag", () => {
+  const days = P.buildDays("2026-05-01", "2026-05-31");
+  const res = P.optimize(days, 1, { maxCost: 1 });
+  // Fredag etter Kristi himmelfart og tirsdag etter 2. pinsedag gir begge 4 dager (vanlig: 3).
+  assert.strictEqual(res.chosen.length, 1);
+  assert.ok(["2026-05-15", "2026-05-26"].includes(days[res.chosen[0]].key));
+  assert.strictEqual(res.gained, 1);
+});
+
+test("bruker bare dager som gir verdi – resten av budsjettet blir igjen", () => {
+  const days = P.buildDays("2026-12-01", "2028-01-31", { planFrom: "2027-01-01", planTo: "2027-12-31" });
+  const res = P.optimize(days, 25, { maxCost: 5 });
+  assert.ok(res.used < 25, "brukte " + res.used);
+  res.chosen.forEach((i) => { days[i].suggested = true; });
+  P.vacationPeriods(days).forEach((p) => assert.ok(p.bonus >= 1, JSON.stringify(p)));
+});
+
+test("påsken 2027: 3 feriedager gir 10 dager fri", () => {
+  const days = P.buildDays("2027-03-01", "2027-04-30");
+  const res = P.optimize(days, 3, { maxCost: 5 });
+  assert.deepStrictEqual(res.chosen.map((i) => days[i].key), ["2027-03-22", "2027-03-23", "2027-03-24"]);
+  assert.strictEqual(res.gained, 5);
+});
+
+test("strengere krav til verdi gir færre forslag", () => {
+  const mk = () => P.buildDays("2026-12-01", "2028-01-31", { planFrom: "2027-01-01", planTo: "2027-12-31" });
+  const loose = P.optimize(mk(), 25, { maxCost: 5, minRatio: 0.01 });
+  const strict = P.optimize(mk(), 25, { maxCost: 5, minRatio: 1 });
+  assert.ok(strict.used < loose.used);
+});
+
+test("egne feriedager respekteres og gir ikke dobbel bonus", () => {
   const days = P.buildDays("2026-05-01", "2026-05-31", {
     vacation: { "2026-05-15": true }
   });
   const fri = days.find((d) => d.key === "2026-05-15");
   assert.strictEqual(fri.locked, true);
   assert.strictEqual(fri.takeable, false);
-  const res = P.optimize(days, 1);
+  const res = P.optimize(days, 5, { maxCost: 1 });
   assert.ok(!res.chosen.includes(days.indexOf(fri)));
-});
-
-test("minste periodelengde overholdes", () => {
-  const days = P.buildDays("2026-01-01", "2026-12-31");
-  const res = P.optimize(days, 10, { minRunLength: 9 });
-  res.chosen.forEach((i) => { days[i].suggested = true; });
-  const periods = P.vacationPeriods(days);
-  assert.ok(periods.length > 0);
-  periods.forEach((p) => assert.ok(p.length >= 9, JSON.stringify(p)));
-  assert.ok(res.used <= 10);
+  // Å forlenge den egne perioden med en vanlig dag gir ingen ny bonus.
+  assert.ok(!res.chosen.map((i) => days[i].key).includes("2026-05-18"));
 });
 
 test("planperiode begrenser valgbare dager", () => {
@@ -69,21 +88,28 @@ test("planperiode begrenser valgbare dager", () => {
   res.chosen.forEach((i) => assert.ok(days[i].key >= "2026-10-01"));
 });
 
+test("verdikart markerer inneklemte dager og påskeuken", () => {
+  const days = P.buildDays("2027-03-01", "2027-05-31");
+  const v = P.dayValues(days, { maxCost: 5 });
+  const at = (k) => v[days.findIndex((d) => d.key === k)];
+  assert.strictEqual(at("2027-05-07").gain, 1);     // fredag etter Kristi himmelfart
+  assert.strictEqual(at("2027-03-24").ratio, 3);    // onsdag før skjærtorsdag: 1 dag → 6 dager
+  assert.strictEqual(at("2027-04-14"), null);       // helt vanlig onsdag
+});
+
 // Brute force: prøv alle delmengder av valgbare dager og sammenlign med DP.
-function score(days, chosenSet, minRun) {
-  const free = days.map((d, i) => d.off || d.locked || chosenSet.has(i));
+function score(days, chosenSet, opts) {
+  const base = P.baselineTable([1, 2, 3, 4, 5], 40);
+  const free = days.map((d, i) => d.off || chosenSet.has(i));
   let gain = 0;
   for (let i = 0; i < days.length; i++) {
     if (!free[i]) continue;
-    let j = i, hasNew = false, hasLocked = false;
-    while (j < days.length && free[j]) {
-      if (chosenSet.has(j)) hasNew = true;
-      if (days[j].locked) hasLocked = true;
-      j++;
-    }
-    if (hasNew) {
-      if (j - i < minRun) return -Infinity;
-      if (!hasLocked) gain += j - i;
+    let j = i, c = 0;
+    while (j < days.length && free[j]) { if (chosenSet.has(j)) c++; j++; }
+    if (c > 0) {
+      const g = (j - i) - base[c];
+      if (c > opts.maxCost || g < 1 || g / c < opts.minRatio - 1e-9) return -Infinity;
+      gain += g;
     }
     i = j - 1;
   }
@@ -94,11 +120,12 @@ test("DP gir samme optimum som brute force", () => {
   const ranges = [
     ["2026-03-25", "2026-04-20"],
     ["2026-05-01", "2026-05-31"],
-    ["2026-12-14", "2027-01-08"]
+    ["2026-12-14", "2027-01-08"],
+    ["2027-03-15", "2027-04-07"]
   ];
   for (const [a, b] of ranges) {
     for (const budget of [1, 2, 3, 5]) {
-      for (const minRun of [1, 4, 6]) {
+      for (const opts of [{ maxCost: 1, minRatio: 0.01 }, { maxCost: 5, minRatio: 0.01 }, { maxCost: 5, minRatio: 1 }]) {
         const days = P.buildDays(a, b);
         const idx = days.map((d, i) => (d.takeable ? i : -1)).filter((i) => i >= 0);
         let best = 0;
@@ -107,11 +134,12 @@ test("DP gir samme optimum som brute force", () => {
           for (let m = mask; m; m &= m - 1) bits++;
           if (bits > budget) continue;
           const set = new Set(idx.filter((_, k) => mask & (1 << k)));
-          best = Math.max(best, score(days, set, minRun));
+          best = Math.max(best, score(days, set, opts));
         }
-        const res = P.optimize(days, budget, { minRunLength: minRun });
-        assert.strictEqual(res.gained, best, `${a}–${b} budsjett ${budget} min ${minRun}`);
-        assert.strictEqual(score(days, new Set(res.chosen), minRun), best);
+        const res = P.optimize(days, budget, opts);
+        const label = `${a}–${b} budsjett ${budget} ${JSON.stringify(opts)}`;
+        assert.strictEqual(res.gained, best, label);
+        assert.strictEqual(score(days, new Set(res.chosen), opts), best, label);
       }
     }
   }

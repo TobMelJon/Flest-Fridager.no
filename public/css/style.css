@@ -17,6 +17,10 @@
   --suggested-text: #ffffff;
   --own-bg: #1f6feb;
   --own-text: #ffffff;
+  --val-1: #fdf3d0;
+  --val-2: #f8d978;
+  --val-3: #eeb422;
+  --val-text: #4a3500;
 
   --radius: 12px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
@@ -40,6 +44,10 @@
     --squeeze: #f2b630;
     --suggested-bg: #2fb36a;
     --own-bg: #4c8dff;
+    --val-1: #3b3418;
+    --val-2: #6b5713;
+    --val-3: #a8810f;
+    --val-text: #fff3cc;
     --shadow: none;
   }
 }
@@ -213,6 +221,52 @@ select {
   font-weight: 600;
 }
 
+.chips {
+  display: flex;
+  gap: 4px;
+}
+
+.chips button {
+  font: inherit;
+  font-size: 0.85rem;
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chips button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.buttons {
+  display: grid;
+  gap: 8px;
+}
+
+.btn-primary {
+  font: inherit;
+  font-weight: 600;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--suggested-bg);
+  color: var(--suggested-text);
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .btn-secondary {
   font: inherit;
   width: 100%;
@@ -271,6 +325,14 @@ select {
   padding: 10px 12px;
 }
 
+.periods li.period-own {
+  border-left-color: var(--own-bg);
+}
+
+.periods li.period-mixed {
+  border-left-color: var(--val-3);
+}
+
 .periods li.empty {
   border-left-color: var(--border);
   color: var(--muted);
@@ -290,15 +352,46 @@ select {
   color: var(--suggested-bg);
 }
 
+.badge.muted {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.period-calc {
+  font-size: 0.9rem;
+}
+
 .period-dates {
   color: var(--muted);
   font-size: 0.85rem;
 }
 
+.summary h2 small {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.remaining {
+  margin: -6px 0 18px;
+  color: var(--muted);
+}
+
+.remaining:empty {
+  display: none;
+}
+
+.explain,
 .squeeze-list {
   margin-top: 16px;
 }
 
+.explain p {
+  margin: 8px 0;
+  max-width: 70ch;
+}
+
+.explain summary,
 .squeeze-list summary {
   cursor: pointer;
   font-weight: 600;
@@ -343,6 +436,17 @@ select {
 .sw-squeeze { border: 2px dashed var(--squeeze); }
 .sw-suggested { background: var(--suggested-bg); }
 .sw-own { background: var(--own-bg); }
+.sw.val-1 { background: var(--val-1); }
+.sw.val-2 { background: var(--val-2); }
+.sw.val-3 { background: var(--val-3); }
+
+.legend-values .sw {
+  margin-right: -4px;
+}
+
+.legend-values .sw:last-of-type {
+  margin-right: 0;
+}
 
 /* ---------- Kalender ---------- */
 
@@ -431,6 +535,10 @@ button.day:focus-visible {
   color: var(--holiday);
   font-weight: 700;
 }
+
+.day.val-1 { background: var(--val-1); color: var(--val-text); }
+.day.val-2 { background: var(--val-2); color: var(--val-text); }
+.day.val-3 { background: var(--val-3); color: var(--val-text); font-weight: 700; }
 
 .day.squeeze {
   border: 2px dashed var(--squeeze);

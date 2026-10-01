@@ -1,6 +1,6 @@
 /*
- * Brukergrensesnittet: leser innstillinger, kjører optimaliseringen og tegner
- * kalenderen. All logikk for datoer og planlegging ligger i holidays.js og
+ * Brukergrensesnittet: leser innstillinger, regner ut verdier og forslag og
+ * tegner kalenderen. All logikk for datoer og verdier ligger i holidays.js og
  * planner.js.
  */
 (function () {
@@ -9,10 +9,11 @@
   var H = window.FFHolidays;
   var P = window.FFPlanner;
 
-  var STORAGE_KEY = "flest-fridager:v1";
+  var STORAGE_KEY = "flest-fridager:v2";
   var MONTHS = ["Januar", "Februar", "Mars", "April", "Mai", "Juni", "Juli",
     "August", "September", "Oktober", "November", "Desember"];
-  var WEEKDAYS = ["Ma", "Ti", "On", "To", "Fr", "Lø", "Sø"];
+  // Kalenderen starter på mandag; verdien er JavaScripts ukedagnummer (0 = søndag).
+  var WEEKDAYS = [["Ma", 1], ["Ti", 2], ["On", 3], ["To", 4], ["Fr", 5], ["Lø", 6], ["Sø", 0]];
 
   var now = new Date();
   var todayKey = H.toKey(H.makeDate(now.getFullYear(), now.getMonth() + 1, now.getDate()));
@@ -21,14 +22,20 @@
   var state = {
     year: thisYear,
     budget: 25,
-    strategy: 5,
+    workdays: [1, 2, 3, 4, 5],
+    maxCost: 5,
+    minRatio: 0.5,
     summerOn: true,
     summerWeek: 28,
     summerWeeks: 3,
     julaften: false,
     nyttarsaften: false,
+    showSuggestions: true,
+    showValues: true,
     own: {}
   };
+
+  var lastModel = null;
 
   // ---------- Lagring (kun i brukerens nettleser) ----------
 
@@ -42,6 +49,7 @@
       }
     } catch (e) { /* lagring er ikke tilgjengelig – bruk standardverdier */ }
     if (state.year < thisYear || state.year > thisYear + 1) state.year = thisYear;
+    if (!Array.isArray(state.workdays)) state.workdays = [1, 2, 3, 4, 5];
   }
 
   function save() {
@@ -54,6 +62,9 @@
 
   var fmtDay = new Intl.DateTimeFormat("nb-NO", {
     weekday: "short", day: "numeric", month: "short", timeZone: "UTC"
+  });
+  var fmtShort = new Intl.DateTimeFormat("nb-NO", {
+    day: "numeric", month: "short", timeZone: "UTC"
   });
   var fmtLong = new Intl.DateTimeFormat("nb-NO", {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
@@ -85,6 +96,21 @@
     if (className) node.className = className;
     if (text != null) node.textContent = text;
     return node;
+  }
+
+  function plural(n, one, many) {
+    return n + " " + (n === 1 ? one : many);
+  }
+
+  function range(startKey, endKey) {
+    return fmtDay.format(H.fromKey(startKey)) + " – " + fmtDay.format(H.fromKey(endKey));
+  }
+
+  // Verdinivå 1–3 brukes til fargene i verdikartet.
+  function valueTier(ratio) {
+    if (ratio >= 2) return 3;
+    if (ratio >= 1) return 2;
+    return 1;
   }
 
   function periodLabel(days, period) {
@@ -133,6 +159,7 @@
     Object.keys(summer).forEach(function (k) { vacation[k] = true; });
 
     var days = P.buildDays((year - 1) + "-12-01", (year + 1) + "-01-31", {
+      workdays: state.workdays,
       extraOff: extraOff,
       vacation: vacation,
       planFrom: planFrom,
@@ -145,20 +172,29 @@
       if (d.locked && d.key >= planFrom && d.key <= planTo) lockedInPlan++;
     });
 
-    var remaining = Math.max(0, state.budget - lockedInPlan);
-    var result = P.optimize(days, remaining, { minRunLength: state.strategy });
-    result.chosen.forEach(function (idx) { days[idx].suggested = true; });
+    var options = { workdays: state.workdays, maxCost: state.maxCost, minRatio: state.minRatio };
+    var available = Math.max(0, state.budget - lockedInPlan);
 
-    var periods = P.vacationPeriods(days).filter(function (p) {
+    // Verdikartet viser hva hver dag er verdt gitt det som allerede er lagt inn.
+    var values = P.dayValues(days, options);
+
+    var result = { chosen: [], used: 0, gained: 0 };
+    if (state.showSuggestions) {
+      result = P.optimize(days, available, options);
+      result.chosen.forEach(function (idx) { days[idx].suggested = true; });
+    }
+
+    var periods = P.vacationPeriods(days, options).filter(function (p) {
       return p.end >= planFrom && p.start <= planTo;
     });
 
     return {
       days: days,
+      values: values,
       planFrom: planFrom,
       planTo: planTo,
       lockedInPlan: lockedInPlan,
-      remaining: remaining,
+      available: available,
       result: result,
       periods: periods
     };
@@ -182,12 +218,28 @@
     });
   }
 
+  function renderWorkdays() {
+    var box = document.getElementById("workdays");
+    box.textContent = "";
+    WEEKDAYS.forEach(function (w) {
+      var on = state.workdays.indexOf(w[1]) !== -1;
+      var b = el("button", on ? "active" : "", w[0]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.addEventListener("click", function () {
+        if (on) state.workdays = state.workdays.filter(function (d) { return d !== w[1]; });
+        else state.workdays = state.workdays.concat([w[1]]);
+        update();
+      });
+      box.appendChild(b);
+    });
+  }
+
   function renderSummary(model) {
     var year = state.year;
     var res = model.result;
-    var totalUsed = model.lockedInPlan + res.used;
-    var freeDays = model.periods.reduce(function (s, p) { return s + p.length; }, 0);
-    var vacDays = model.periods.reduce(function (s, p) { return s + p.vacationDays; }, 0);
+    var bonus = model.periods.reduce(function (s, p) { return s + Math.max(0, p.bonus); }, 0);
+    var left = Math.max(0, model.available - res.used);
     var squeeze = model.days.filter(function (d) {
       return d.squeeze && d.key.slice(0, 4) === String(year);
     });
@@ -195,9 +247,9 @@
     var stats = document.getElementById("stats");
     stats.textContent = "";
     [
-      [freeDays, "dager fri i ferieperiodene"],
-      [totalUsed + " / " + state.budget, "feriedager brukt"],
-      [vacDays ? (freeDays / vacDays).toFixed(1).replace(".", ",") : "–", "fridager per feriedag"],
+      ["+" + bonus, "ekstra fridager i planen"],
+      [res.used, "verdifulle dager foreslått"],
+      [left, "feriedager igjen å plassere selv"],
       [squeeze.length, "inneklemte dager i " + year]
     ].forEach(function (s) {
       var box = el("div", "stat");
@@ -206,20 +258,42 @@
       stats.appendChild(box);
     });
 
+    var rem = document.getElementById("remaining");
+    if (!state.showSuggestions) {
+      rem.textContent = "Forslag er skrudd av. Bruk verdikartet og klikk på dagene du vil ha fri.";
+    } else if (left > 0 && res.used > 0) {
+      rem.textContent = "Forslagene bruker bare dagene som gir ekstra fridager. " +
+        (left === 1 ? "Den siste feriedagen gir" : "De " + left + " andre feriedagene gir") +
+        " like mye uansett hvor " + (left === 1 ? "den legges, så den" : "de legges, så de") + " plasserer du selv.";
+    } else if (left > 0) {
+      rem.textContent = "Ingen flere dager gir ekstra fridager med disse valgene. Plasser " +
+        (left === 1 ? "den siste feriedagen" : "de " + left + " feriedagene") + " der det passer deg.";
+    } else {
+      rem.textContent = "";
+    }
+
     var list = document.getElementById("periods");
     list.textContent = "";
-    if (!model.periods.length) {
-      list.appendChild(el("li", "empty", "Ingen feriedager å fordele. Øk antall feriedager eller endre innstillingene."));
+    var sorted = model.periods.slice().sort(function (a, b) {
+      return (b.bonus / b.vacationDays) - (a.bonus / a.vacationDays) || b.bonus - a.bonus ||
+        (a.start < b.start ? -1 : 1);
+    });
+    if (!sorted.length) {
+      list.appendChild(el("li", "empty", "Ingen feriedager lagt inn eller foreslått ennå."));
     }
-    model.periods.forEach(function (p) {
-      var li = el("li");
+    sorted.forEach(function (p) {
+      var kind = p.ownDays === 0 ? "suggested" : (p.suggestedDays === 0 ? "own" : "mixed");
+      var li = el("li", "period-" + kind);
       var title = el("div", "period-title");
       title.appendChild(el("strong", null, periodLabel(model.days, p)));
-      title.appendChild(el("span", "badge", p.length + " dager fri"));
+      title.appendChild(el("span", p.bonus > 0 ? "badge" : "badge muted",
+        p.bonus > 0 ? "+" + p.bonus + " ekstra" : "ingen ekstra"));
       li.appendChild(title);
-      li.appendChild(el("div", "period-dates",
-        fmtDay.format(H.fromKey(p.start)) + " – " + fmtDay.format(H.fromKey(p.end)) +
-        " · " + p.vacationDays + (p.vacationDays === 1 ? " feriedag" : " feriedager")));
+      li.appendChild(el("div", "period-calc",
+        plural(p.vacationDays, "feriedag", "feriedager") + " → " + p.length + " dager fri"));
+      var who = kind === "suggested" ? "Forslag" : (kind === "own" ? "Din ferie" :
+        "Din ferie + " + plural(p.suggestedDays, "foreslått dag", "foreslåtte dager"));
+      li.appendChild(el("div", "period-dates", range(p.start, p.end) + " · " + who));
       list.appendChild(li);
     });
 
@@ -231,24 +305,22 @@
     if (!squeeze.length) sq.appendChild(el("li", null, "Ingen inneklemte dager i " + year + "."));
 
     // Hint under feriedagsfeltet.
-    var label = document.getElementById("budget-label");
-    label.textContent = year === thisYear ? "Feriedager du har igjen i år" : "Feriedager i " + year;
+    document.getElementById("budget-label").textContent =
+      year === thisYear ? "Feriedager du har igjen i år" : "Feriedager i " + year;
     var hint = document.getElementById("budget-hint");
-    var parts = [];
-    if (model.lockedInPlan) parts.push(model.lockedInPlan + " allerede lagt inn");
-    if (state.budget < model.lockedInPlan) {
-      parts.push("du har lagt inn " + (model.lockedInPlan - state.budget) + " flere enn du har");
-    } else {
-      parts.push(model.remaining + " fordelt automatisk");
-    }
-    hint.textContent = parts.join(" · ");
-    hint.classList.toggle("warn", state.budget < model.lockedInPlan);
+    var over = model.lockedInPlan - state.budget;
+    hint.textContent = over > 0
+      ? "Du har lagt inn " + plural(over, "dag", "dager") + " mer enn du har."
+      : model.lockedInPlan + " lagt inn · " + res.used + " foreslått · " + left + " igjen";
+    hint.classList.toggle("warn", over > 0);
+
+    document.getElementById("accept").disabled = res.used === 0;
   }
 
   function renderCalendar(model) {
     var year = state.year;
     var byKey = {};
-    model.days.forEach(function (d) { byKey[d.key] = d; });
+    model.days.forEach(function (d, i) { byKey[d.key] = i; });
 
     var cal = document.getElementById("calendar");
     cal.textContent = "";
@@ -260,7 +332,7 @@
       var table = el("table");
       var head = el("tr");
       head.appendChild(el("th", "wk", "Uke"));
-      WEEKDAYS.forEach(function (w) { head.appendChild(el("th", null, w)); });
+      WEEKDAYS.forEach(function (w) { head.appendChild(el("th", null, w[0])); });
       var thead = el("thead");
       thead.appendChild(head);
       table.appendChild(thead);
@@ -274,7 +346,8 @@
         for (var c = 0; c < 7; c++) {
           var td = el("td");
           if (cursor.getUTCMonth() === m - 1) {
-            fillCell(td, byKey[H.toKey(cursor)], model);
+            var idx = byKey[H.toKey(cursor)];
+            fillCell(td, model.days[idx], model.values[idx], model);
           }
           row.appendChild(td);
           cursor = H.addDays(cursor, 1);
@@ -288,7 +361,7 @@
     }
   }
 
-  function fillCell(td, d, model) {
+  function fillCell(td, d, value, model) {
     var classes = ["day"];
     var notes = [];
     if (d.weekend) classes.push("weekend");
@@ -298,6 +371,13 @@
     if (d.suggested) { classes.push("suggested"); notes.push("Foreslått feriedag"); }
     if (d.summer) { classes.push("own"); notes.push("Sommerferie"); }
     else if (d.locked) { classes.push("own"); notes.push("Egen feriedag"); }
+    if (value) {
+      if (state.showValues && !d.suggested) classes.push("val-" + valueTier(value.ratio));
+      notes.push("Verdi: ta fri " + fmtShort.format(H.fromKey(value.start)) + "–" +
+        fmtShort.format(H.fromKey(value.end)) + " med " +
+        plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
+        " dager fri (+" + value.gain + " ekstra)");
+    }
     if (d.key < model.planFrom) classes.push("past");
     if (d.key === todayKey) classes.push("today");
 
@@ -311,7 +391,7 @@
     } else {
       node = el("span", classes.join(" "), String(d.date.getUTCDate()));
     }
-    var label = fmtLong.format(d.date) + (notes.length ? " – " + notes.join(", ") : "");
+    var label = fmtLong.format(d.date) + (notes.length ? " – " + notes.join(". ") : "");
     node.title = label;
     node.setAttribute("aria-label", label);
     td.appendChild(node);
@@ -326,36 +406,55 @@
   // ---------- Skjema ----------
 
   function bindForm() {
-    var budget = document.getElementById("budget");
-    var strategy = document.getElementById("strategy");
-    var summerOn = document.getElementById("summer-on");
-    var summerWeek = document.getElementById("summer-week");
-    var summerWeeks = document.getElementById("summer-weeks");
-    var jul = document.getElementById("opt-julaften");
-    var nyttar = document.getElementById("opt-nyttarsaften");
+    var inputs = {
+      budget: document.getElementById("budget"),
+      maxCost: document.getElementById("max-cost"),
+      minRatio: document.getElementById("min-ratio"),
+      summerOn: document.getElementById("summer-on"),
+      summerWeek: document.getElementById("summer-week"),
+      summerWeeks: document.getElementById("summer-weeks"),
+      julaften: document.getElementById("opt-julaften"),
+      nyttarsaften: document.getElementById("opt-nyttarsaften"),
+      showSuggestions: document.getElementById("show-suggestions"),
+      showValues: document.getElementById("show-values")
+    };
 
-    budget.value = state.budget;
-    strategy.value = String(state.strategy);
-    summerOn.checked = state.summerOn;
-    summerWeek.value = state.summerWeek;
-    summerWeeks.value = state.summerWeeks;
-    jul.checked = state.julaften;
-    nyttar.checked = state.nyttarsaften;
+    inputs.budget.value = state.budget;
+    inputs.maxCost.value = String(state.maxCost);
+    inputs.minRatio.value = String(state.minRatio);
+    inputs.summerOn.checked = state.summerOn;
+    inputs.summerWeek.value = state.summerWeek;
+    inputs.summerWeeks.value = state.summerWeeks;
+    inputs.julaften.checked = state.julaften;
+    inputs.nyttarsaften.checked = state.nyttarsaften;
+    inputs.showSuggestions.checked = state.showSuggestions;
+    inputs.showValues.checked = state.showValues;
 
     function read() {
-      state.budget = clampInt(budget.value, 0, 60, state.budget);
-      state.strategy = clampInt(strategy.value, 1, 30, 5);
-      state.summerOn = summerOn.checked;
-      state.summerWeek = clampInt(summerWeek.value, 1, 52, 28);
-      state.summerWeeks = clampInt(summerWeeks.value, 1, 6, 3);
-      state.julaften = jul.checked;
-      state.nyttarsaften = nyttar.checked;
+      state.budget = clampInt(inputs.budget.value, 0, 60, state.budget);
+      state.maxCost = clampInt(inputs.maxCost.value, 1, 10, 5);
+      state.minRatio = parseFloat(inputs.minRatio.value) || 0.5;
+      state.summerOn = inputs.summerOn.checked;
+      state.summerWeek = clampInt(inputs.summerWeek.value, 1, 52, 28);
+      state.summerWeeks = clampInt(inputs.summerWeeks.value, 1, 6, 3);
+      state.julaften = inputs.julaften.checked;
+      state.nyttarsaften = inputs.nyttarsaften.checked;
+      state.showSuggestions = inputs.showSuggestions.checked;
+      state.showValues = inputs.showValues.checked;
       update();
     }
 
-    [budget, strategy, summerOn, summerWeek, summerWeeks, jul, nyttar].forEach(function (input) {
-      input.addEventListener("input", read);
-      input.addEventListener("change", read);
+    Object.keys(inputs).forEach(function (k) {
+      inputs[k].addEventListener("input", read);
+      inputs[k].addEventListener("change", read);
+    });
+
+    document.getElementById("accept").addEventListener("click", function () {
+      if (!lastModel) return;
+      lastModel.result.chosen.forEach(function (idx) {
+        state.own[lastModel.days[idx].key] = true;
+      });
+      update();
     });
 
     document.getElementById("reset-own").addEventListener("click", function () {
@@ -366,8 +465,10 @@
 
   function update() {
     var model = compute();
+    lastModel = model;
     document.getElementById("summer-fields").classList.toggle("disabled", !state.summerOn);
     renderYearPicker();
+    renderWorkdays();
     renderSummary(model);
     renderCalendar(model);
     save();

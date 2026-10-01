@@ -1,10 +1,21 @@
 /*
- * Kalenderbygging, inneklemte dager og optimalisering av feriedager.
+ * Kalenderbygging, inneklemte dager og verdiberegning for feriedager.
  *
- * Optimaliseringen velger hvilke arbeidsdager som skal tas som ferie slik at
- * summen av lengden på alle sammenhengende friperioder som inneholder en
- * feriedag blir størst mulig. Det løses eksakt med dynamisk programmering
- * (en variant av ryggsekkproblemet over tidslinjen).
+ * Verdimodellen
+ * -------------
+ * Tar du fri på noen arbeidsdager, smelter de sammen med helger og røde dager
+ * rundt til én sammenhengende friperiode. Verdien (bonus) av et slikt valg er:
+ *
+ *     bonus = lengden på friperioden - "vanlig" lengde for samme antall feriedager
+ *
+ * der "vanlig" lengde er det lengste friperioden de samme feriedagene kan gi i en
+ * helt vanlig uke uten røde dager (1 dag → 3 dager, 5 dager → 9 dager osv.).
+ * Bonus er altså fridager du får *i tillegg* fordi du treffer røde dager.
+ * Eksempel: inneklemt fredag etter Kristi himmelfart: 1 feriedag → 4 dager fri,
+ * vanlig ville vært 3, bonus = 1.
+ *
+ * Dager uten bonus koster like mye uansett hvor de legges, så de fordeles ikke
+ * automatisk – det er opp til brukeren.
  */
 (function (root) {
   "use strict";
@@ -13,17 +24,19 @@
     ? require("./holidays.js")
     : root.FFHolidays;
 
+  var DEFAULT_WORKDAYS = [1, 2, 3, 4, 5];
+
   /*
    * Bygger en liste med dager fra startKey til og med endKey.
    * options:
    *   workdays:    ukedager man jobber, 0 = søndag ... 6 = lørdag (standard man–fre)
    *   extraOff:    { "YYYY-MM-DD": "Navn" } – ekstra fridager (f.eks. julaften)
    *   vacation:    { "YYYY-MM-DD": true }    – feriedager brukeren selv har lagt inn
-   *   planFrom/planTo: dagene optimaliseringen får lov til å bruke
+   *   planFrom/planTo: dagene som kan foreslås som feriedager
    */
   function buildDays(startKey, endKey, options) {
     options = options || {};
-    var workdays = options.workdays || [1, 2, 3, 4, 5];
+    var workdays = options.workdays || DEFAULT_WORKDAYS;
     var extraOff = options.extraOff || {};
     var vacation = options.vacation || {};
     var planFrom = options.planFrom || startKey;
@@ -72,44 +85,139 @@
   }
 
   /*
-   * Finner beste plassering av `budget` feriedager.
-   * options.minRunLength: korteste friperiode (i dager) som er verdt å ta fri for.
-   * Returnerer { chosen: [indekser], gained, used }.
+   * base[c] = lengste friperiode c feriedager kan gi i vanlige uker uten røde
+   * dager, gitt hvilke ukedager man jobber. Regnes ut på en syntetisk kalender.
    */
-  function optimize(days, budget, options) {
-    options = options || {};
-    var minRun = Math.max(1, options.minRunLength || 1);
+  function baselineTable(workdays, maxCost) {
+    workdays = workdays || DEFAULT_WORKDAYS;
+    var base = [0];
+    var perWeek = workdays.length;
+    if (perWeek === 0) {
+      for (var z = 1; z <= maxCost; z++) base.push(z);
+      return base;
+    }
+    var n = 7 * (Math.ceil(maxCost / perWeek) + 3);
+    var free = [];
+    for (var i = 0; i < n; i++) free.push(workdays.indexOf(i % 7) === -1);
+    for (var c = 1; c <= maxCost; c++) base.push(c);
+    for (var s = 0; s < n; s++) {
+      if (free[s]) continue;
+      var L = s;
+      while (L > 0 && free[L - 1]) L--;
+      var cost = 0;
+      for (var j = s; j < n; j++) {
+        if (free[j]) continue;
+        cost++;
+        if (cost > maxCost) break;
+        var R = j + 1;
+        while (R < n && free[R]) R++;
+        if (R - L > base[cost]) base[cost] = R - L;
+      }
+    }
+    return base;
+  }
+
+  /*
+   * Forbereder hjelpestrukturer for å regne ut bonus for en friperiode raskt,
+   * også når den slår seg sammen med feriedager brukeren har lagt inn selv.
+   */
+  function prepare(days, workdays, maxCost) {
     var n = days.length;
-    var B = Math.max(0, Math.floor(budget || 0));
-
-    var takeableCount = 0;
-    for (var t = 0; t < n; t++) if (days[t].takeable) takeableCount++;
-    B = Math.min(B, takeableCount);
-
     var free = new Array(n);
-    for (var f = 0; f < n; f++) free[f] = days[f].off || days[f].locked;
+    var totalLocked = 0;
+    for (var i = 0; i < n; i++) {
+      free[i] = days[i].off || days[i].locked;
+      if (days[i].locked) totalLocked++;
+    }
+    var base = baselineTable(workdays, maxCost + totalLocked);
 
-    // Dager som allerede ligger i en friperiode med egne feriedager teller ikke
-    // som ny gevinst – ellers ville algoritmen bare forlenget eksisterende ferie.
-    var alreadyGained = new Array(n).fill(false);
+    // Bonus som egne feriedager allerede gir, slik at bare *økningen* teller.
+    var lockedPrefix = new Array(n + 1).fill(0);
+    var existingPrefix = new Array(n + 1).fill(0);
+    var existingAt = new Array(n).fill(0);
     for (var s = 0; s < n; s++) {
       if (!free[s]) continue;
       var e = s;
-      var hasLocked = false;
-      while (e < n && free[e]) { if (days[e].locked) hasLocked = true; e++; }
-      if (hasLocked) for (var g = s; g < e; g++) alreadyGained[g] = true;
+      var locked = 0;
+      while (e < n && free[e]) { if (days[e].locked) locked++; e++; }
+      if (locked) existingAt[s] = Math.max(0, (e - s) - base[locked]);
       s = e - 1;
     }
-    var gainedPrefix = new Array(n + 1);
-    gainedPrefix[0] = 0;
-    for (var p = 0; p < n; p++) gainedPrefix[p + 1] = gainedPrefix[p] + (alreadyGained[p] ? 1 : 0);
+    for (var p = 0; p < n; p++) {
+      lockedPrefix[p + 1] = lockedPrefix[p] + (days[p].locked ? 1 : 0);
+      existingPrefix[p + 1] = existingPrefix[p] + existingAt[p];
+    }
+
+    return {
+      n: n,
+      free: free,
+      base: base,
+      // Bonus for friperioden [L, R) når `cost` nye feriedager er lagt inn.
+      gain: function (L, R, cost) {
+        var locked = lockedPrefix[R] - lockedPrefix[L];
+        var existing = existingPrefix[R] - existingPrefix[L];
+        return (R - L) - base[cost + locked] - existing;
+      }
+    };
+  }
+
+  /*
+   * Går gjennom alle mulige sammenhengende uttak av feriedager som starter på
+   * dag i (maks maxCost dager) og kaller visit(i, j, cost, L, R, gain), der
+   * j er siste feriedag og [L, R) er hele friperioden.
+   */
+  function eachSegmentFrom(days, ctx, i, maxCost, visit) {
+    var free = ctx.free;
+    var n = ctx.n;
+    var L = i;
+    while (L > 0 && free[L - 1]) L--;
+    var cost = 0;
+    for (var j = i; j < n; j++) {
+      if (free[j]) continue;
+      if (!days[j].takeable) break;
+      cost++;
+      if (cost > maxCost) break;
+      var R = j + 1;
+      while (R < n && free[R]) R++;
+      visit(j, cost, L, R, ctx.gain(L, R, cost));
+    }
+  }
+
+  function normalizeOptions(options) {
+    options = options || {};
+    return {
+      workdays: options.workdays || DEFAULT_WORKDAYS,
+      maxCost: Math.max(1, Math.floor(options.maxCost || 5)),
+      // Minste bonus per feriedag for at et uttak regnes som verdifullt.
+      minRatio: options.minRatio > 0 ? options.minRatio : 0.0001
+    };
+  }
+
+  function isValuable(gain, cost, opts) {
+    return gain >= 1 && gain / cost >= opts.minRatio - 1e-9;
+  }
+
+  /*
+   * Velger de verdifulle uttakene som til sammen gir mest bonus innenfor
+   * budsjettet. Bruker bare dager som faktisk gir bonus – resten av budsjettet
+   * blir stående igjen til brukeren.
+   *
+   * Løses eksakt med dynamisk programmering over tidslinjen: dp[i][k] er beste
+   * poengsum fra dag i og utover med k feriedager igjen.
+   *
+   * Returnerer { chosen: [indekser], used, gained }.
+   */
+  function optimize(days, budget, options) {
+    var opts = normalizeOptions(options);
+    var n = days.length;
+    var B = Math.max(0, Math.floor(budget || 0));
+    var ctx = prepare(days, opts.workdays, opts.maxCost);
 
     var W = B + 1;
-    // Poeng = gevinst * SCALE - (perioder * PERIOD_COST + brukte dager).
-    // Gevinsten (antall fridager) avgjør alltid; ved likhet foretrekkes færre,
-    // lengre perioder og deretter færrest brukte feriedager.
-    var PERIOD_COST = 100;
-    var SCALE = PERIOD_COST * (B + 2) * 2;
+    // Poeng = bonus * SCALE - brukte dager * DAY - antall perioder.
+    // Bonus avgjør; ved likhet brukes færrest mulig feriedager, deretter færrest perioder.
+    var DAY = n + 1;
+    var SCALE = DAY * (B + 1) * 2 + n;
     var dp = new Float64Array((n + 2) * W);
     var choice = new Int32Array((n + 2) * W).fill(-1);
 
@@ -118,30 +226,18 @@
         var best = dp[(i + 1) * W + k];
         var bestEnd = -1;
         if (days[i].takeable && k > 0) {
-          var L = i;
-          while (L > 0 && free[L - 1]) L--;
-          var cost = 0;
-          for (var j = i; j < n; j++) {
-            if (free[j]) continue;
-            if (!days[j].takeable) break;
-            cost++;
-            if (cost > k) break;
-            var R = j + 1;
-            while (R < n && free[R]) R++;
-            var runLength = R - L;
-            if (runLength < minRun) continue;
-            var gain = runLength - (gainedPrefix[R] - gainedPrefix[L]);
+          eachSegmentFrom(days, ctx, i, Math.min(k, opts.maxCost), function (j, cost, L, R, gain) {
+            if (!isValuable(gain, cost, opts)) return;
             var next = Math.min(R + 1, n);
-            var score = gain * SCALE - PERIOD_COST - cost + dp[next * W + (k - cost)];
+            var score = gain * SCALE - cost * DAY - 1 + dp[next * W + (k - cost)];
             if (score > best) { best = score; bestEnd = j; }
-          }
+          });
         }
         dp[i * W + k] = best;
         choice[i * W + k] = bestEnd;
       }
     }
 
-    // Rekonstruer valgene.
     var chosen = [];
     var gained = 0;
     var pos = 0;
@@ -149,14 +245,16 @@
     while (pos < n) {
       var end = choice[pos * W + budgetLeft];
       if (end < 0) { pos++; continue; }
+      var cost = 0;
       for (var c = pos; c <= end; c++) {
-        if (!free[c]) { chosen.push(c); budgetLeft--; }
+        if (!ctx.free[c]) { chosen.push(c); cost++; }
       }
+      budgetLeft -= cost;
       var l = pos;
-      while (l > 0 && free[l - 1]) l--;
+      while (l > 0 && ctx.free[l - 1]) l--;
       var r = end + 1;
-      while (r < n && free[r]) r++;
-      gained += (r - l) - (gainedPrefix[r] - gainedPrefix[l]);
+      while (r < n && ctx.free[r]) r++;
+      gained += ctx.gain(l, r, cost);
       pos = r + 1;
     }
 
@@ -164,38 +262,81 @@
   }
 
   /*
-   * Lister sammenhengende friperioder som inneholder minst én feriedag
-   * (egen eller foreslått). Hver periode: { start, end, length, vacationDays }.
+   * Verdikart: for hver dag som kan tas som ferie, det beste uttaket den inngår i
+   * (høyest bonus per feriedag, deretter høyest bonus). null = ingen bonus.
+   * Hvert element: { ratio, gain, cost, start, end, length }.
    */
-  function vacationPeriods(days) {
+  function dayValues(days, options) {
+    var opts = normalizeOptions(options);
+    var ctx = prepare(days, opts.workdays, opts.maxCost);
+    var values = new Array(days.length).fill(null);
+    for (var i = 0; i < days.length; i++) {
+      if (!days[i].takeable) continue;
+      eachSegmentFrom(days, ctx, i, opts.maxCost, function (j, cost, L, R, gain) {
+        if (gain < 1) return;
+        var v = {
+          ratio: gain / cost, gain: gain, cost: cost,
+          start: days[L].key, end: days[R - 1].key, length: R - L
+        };
+        for (var d = i; d <= j; d++) {
+          if (ctx.free[d]) continue;
+          var cur = values[d];
+          if (!cur || v.ratio > cur.ratio + 1e-9 ||
+              (Math.abs(v.ratio - cur.ratio) < 1e-9 && v.gain > cur.gain)) {
+            values[d] = v;
+          }
+        }
+      });
+    }
+    return values;
+  }
+
+  /*
+   * Lister sammenhengende friperioder som inneholder minst én feriedag
+   * (egen eller foreslått). Hver periode:
+   *   { start, end, length, vacationDays, suggestedDays, ownDays, bonus }
+   */
+  function vacationPeriods(days, options) {
+    var opts = normalizeOptions(options);
     var periods = [];
     var n = days.length;
+    var maxUsed = 0;
+    function isFree(d) { return d.off || d.locked || d.suggested; }
     for (var i = 0; i < n; i++) {
-      var isFree = function (d) { return d.off || d.locked || d.suggested; };
       if (!isFree(days[i])) continue;
       var j = i;
-      var used = 0;
+      var suggested = 0;
+      var own = 0;
       while (j < n && isFree(days[j])) {
-        if (days[j].locked || days[j].suggested) used++;
+        if (days[j].suggested) suggested++;
+        if (days[j].locked) own++;
         j++;
       }
+      var used = suggested + own;
       if (used > 0) {
+        maxUsed = Math.max(maxUsed, used);
         periods.push({
           start: days[i].key,
           end: days[j - 1].key,
           length: j - i,
-          vacationDays: used
+          vacationDays: used,
+          suggestedDays: suggested,
+          ownDays: own
         });
       }
       i = j - 1;
     }
+    var base = baselineTable(opts.workdays, maxUsed);
+    periods.forEach(function (p) { p.bonus = p.length - base[p.vacationDays]; });
     return periods;
   }
 
   var api = {
     buildDays: buildDays,
     markSqueezeDays: markSqueezeDays,
+    baselineTable: baselineTable,
     optimize: optimize,
+    dayValues: dayValues,
     vacationPeriods: vacationPeriods
   };
 

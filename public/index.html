@@ -31,13 +31,28 @@
         <small class="hint" id="budget-hint"></small>
       </div>
 
+      <fieldset class="field">
+        <legend class="label">Dager jeg jobber</legend>
+        <div class="chips" id="workdays" role="group" aria-label="Arbeidsdager"></div>
+      </fieldset>
+
       <div class="field">
-        <label class="label" for="strategy">Hva ønsker du deg?</label>
-        <select id="strategy">
-          <option value="4">Langhelger (minst 4 dager fri i strekk)</option>
-          <option value="5" selected>Balansert (minst 5 dager i strekk)</option>
-          <option value="9">Lengre ferier (minst 9 dager i strekk)</option>
-          <option value="1">Ingen krav (flest mulig fridager)</option>
+        <label class="label" for="max-cost">Hvor mange feriedager vil du bruke på én fri?</label>
+        <select id="max-cost">
+          <option value="1">Bare inneklemte dager (1 dag)</option>
+          <option value="2">Inntil 2 dager</option>
+          <option value="3">Inntil 3 dager</option>
+          <option value="5" selected>Inntil en arbeidsuke (5 dager)</option>
+          <option value="10">Inntil to uker (10 dager)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="label" for="min-ratio">Hvor kresen er du?</label>
+        <select id="min-ratio">
+          <option value="1">Bare de beste (minst 1 ekstra fridag per feriedag)</option>
+          <option value="0.5" selected>Gode muligheter (minst 1 ekstra per 2 feriedager)</option>
+          <option value="0.01">Alt som gir ekstra fridager</option>
         </select>
       </div>
 
@@ -56,15 +71,36 @@
         <label class="check"><input type="checkbox" id="opt-nyttarsaften"> Nyttårsaften (31.12)</label>
       </fieldset>
 
-      <p class="hint">Tips: klikk på en arbeidsdag i kalenderen for å legge inn egne feriedager. Planen tilpasser seg automatisk.</p>
-      <button type="button" class="btn-secondary" id="reset-own">Fjern egne feriedager</button>
+      <fieldset class="field">
+        <legend class="label">Visning</legend>
+        <label class="check"><input type="checkbox" id="show-suggestions" checked> Vis forslag til feriedager</label>
+        <label class="check"><input type="checkbox" id="show-values" checked> Vis verdikart</label>
+      </fieldset>
+
+      <p class="hint">Klikk på en arbeidsdag i kalenderen for å legge den inn som egen feriedag. Forslagene tilpasser seg det du har valgt.</p>
+      <div class="buttons">
+        <button type="button" class="btn-primary" id="accept">Bruk forslagene</button>
+        <button type="button" class="btn-secondary" id="reset-own">Fjern egne feriedager</button>
+      </div>
     </aside>
 
     <section class="content">
       <div class="panel summary" aria-live="polite">
         <div class="stats" id="stats"></div>
-        <h2>Ferieplan</h2>
+        <p class="remaining" id="remaining"></p>
+        <h2>Ferieplan <small>sortert etter verdi</small></h2>
         <ol class="periods" id="periods"></ol>
+        <details class="explain">
+          <summary>Slik regnes verdien ut</summary>
+          <p>Tar du fri på en arbeidsdag, smelter den sammen med helger og røde dager rundt til én friperiode.
+            <strong>Verdien</strong> er hvor mange <em>ekstra</em> fridager du får sammenlignet med å bruke like mange
+            feriedager i en helt vanlig uke uten røde dager.</p>
+          <p>I en vanlig uke gir 1 feriedag 3 dager fri (langhelg), og 5 feriedager gir 9 dager fri.
+            Den inneklemte fredagen etter Kristi himmelfart gir 4 dager fri for 1 feriedag, altså <strong>+1</strong>.
+            Mandag–onsdag før påske gir 10 dager fri for 3 feriedager, altså <strong>+5</strong>.</p>
+          <p>Feriedager uten ekstra verdi koster det samme uansett hvor du legger dem, så de foreslås ikke.
+            Dem plasserer du selv der det passer deg.</p>
+        </details>
         <details class="squeeze-list">
           <summary>Inneklemte dager</summary>
           <ul id="squeeze-days"></ul>
@@ -75,6 +111,7 @@
         <span><i class="sw sw-holiday"></i>Rød dag</span>
         <span><i class="sw sw-weekend"></i>Helg</span>
         <span><i class="sw sw-squeeze"></i>Inneklemt dag</span>
+        <span class="legend-values"><i class="sw val-3"></i><i class="sw val-2"></i><i class="sw val-1"></i>Verdi ved å ta fri (mørkere = mer verdt)</span>
         <span><i class="sw sw-suggested"></i>Foreslått feriedag</span>
         <span><i class="sw sw-own"></i>Egen feriedag</span>
       </div>
