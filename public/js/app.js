@@ -114,8 +114,8 @@
 
   // Verdinivå 1–3 brukes til fargene i verdikartet.
   function valueTier(ratio) {
-    if (ratio >= 2) return 3;
-    if (ratio >= 1) return 2;
+    if (ratio >= 1) return 3;
+    if (ratio >= 0.5) return 2;
     return 1;
   }
 
@@ -132,7 +132,7 @@
       if (/Grunnlov/.test(h)) add("17. mai");
       if (/jul/i.test(h)) add("Jul");
       if (/nyttår/i.test(h)) add("Nyttår");
-      if (d.summer) add("Sommerferie");
+      if (d.summer) add("Fellesferie");
     });
     if (!names.length) {
       days.forEach(function (d) {
@@ -198,11 +198,13 @@
     });
 
     var options = { workdays: state.workdays, maxCost: state.maxCost, minRatio: state.minRatio };
-    var available = Math.max(0, state.budget - taken - planned);
 
     // Verdikartet viser hva hver dag er verdt gitt det som allerede er lagt inn.
     var values = P.dayValues(days, options);
-    var extensions = P.extensionOptions(days, options);
+    var available = Math.max(0, state.budget - taken - planned);
+    var tips = P.ownSuggestions(days, options).filter(function (t) {
+      return t.takeStart >= planFrom && t.takeEnd <= planTo;
+    });
 
     var result = { chosen: [], used: 0, gained: 0 };
     if (state.showSuggestions) {
@@ -217,7 +219,7 @@
     return {
       days: days,
       values: values,
-      extensions: extensions,
+      tips: tips,
       school: school,
       yearFrom: yearFrom,
       planFrom: planFrom,
@@ -249,6 +251,28 @@
     });
   }
 
+  // Ukevalg for vinter- og høstferie. Senere kan ukene forhåndsvelges per
+  // kommune/fylke fra en årlig oppdatert tabell over skoleruter.
+  var WEEK_CHOICES = { winterWeek: [8, 9, 10], autumnWeek: [39, 40, 41] };
+
+  function renderWeekChips() {
+    Object.keys(WEEK_CHOICES).forEach(function (field) {
+      var box = document.getElementById(field === "winterWeek" ? "winter-weeks" : "autumn-weeks");
+      box.textContent = "";
+      WEEK_CHOICES[field].forEach(function (w) {
+        var on = state[field] === w;
+        var b = el("button", on ? "active" : "", "Uke " + w);
+        b.type = "button";
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        b.addEventListener("click", function () {
+          state[field] = w;
+          update();
+        });
+        box.appendChild(b);
+      });
+    });
+  }
+
   function renderWorkdays() {
     var box = document.getElementById("workdays");
     box.textContent = "";
@@ -266,21 +290,31 @@
     });
   }
 
-  // Beste utvidelse for en egen periode, som en kort tekst og dagene som legges til.
-  function bestExtension(model, period) {
-    var run = null;
-    model.extensions.forEach(function (r) {
-      if (r.start === period.start && r.end === period.end) run = r;
+  function tipText(t) {
+    var days = plural(t.cost, "dag", "dager");
+    var short = lastModel && t.cost > lastModel.available
+      ? (lastModel.available === 0 ? " – men du har ingen feriedager igjen"
+        : " – men du har bare " + plural(lastModel.available, "feriedag", "feriedager") + " igjen") : "";
+    return (t.joins
+      ? "Tar du også " + shortRange(t.takeStart, t.takeEnd) + " (" + days + "), henger periodene sammen: "
+      : "Tar du også " + shortRange(t.takeStart, t.takeEnd) + " (" + days + "), får du ") +
+      t.length + " dager fri i strekk (+" + t.gain + ")" + short;
+  }
+
+  function addTip(t) {
+    lastModel.days.forEach(function (d) {
+      if (d.key >= t.takeStart && d.key <= t.takeEnd && !d.off && !d.locked) state.own[d.key] = true;
     });
-    if (!run || !run.options.length) return null;
-    var o = run.options[0];
-    var keys = o.take.map(function (i) { return model.days[i].key; });
-    return {
-      text: "+" + plural(o.cost, "feriedag", "feriedager") + " (" +
-        shortRange(keys[0], keys[keys.length - 1]) + ") → " + o.length +
-        " dager fri i stedet for " + period.length,
-      keys: keys
-    };
+    update();
+  }
+
+  // Beste live-tips som bygger videre på en egen periode.
+  function tipFor(model, period) {
+    var found = null;
+    model.tips.forEach(function (t) {
+      if (!found && t.start <= period.end && t.end >= period.start) found = t;
+    });
+    return found;
   }
 
   function renderSummary(model) {
@@ -305,6 +339,24 @@
       box.appendChild(el("span", null, s[1]));
       stats.appendChild(box);
     });
+
+    var live = document.getElementById("live-tips");
+    live.textContent = "";
+    live.hidden = !model.tips.length;
+    if (model.tips.length) {
+      live.appendChild(el("strong", null, "Tips basert på dagene du har valgt"));
+      var ul = el("ul");
+      model.tips.slice(0, 3).forEach(function (t) {
+        var li = el("li");
+        li.appendChild(el("span", null, tipText(t)));
+        var add = el("button", "link-btn", "Legg til");
+        add.type = "button";
+        add.addEventListener("click", function () { addTip(t); });
+        li.appendChild(add);
+        ul.appendChild(li);
+      });
+      live.appendChild(ul);
+    }
 
     var rem = document.getElementById("remaining");
     if (!state.showSuggestions) {
@@ -344,17 +396,14 @@
         mixed: "Valgt av deg + " + plural(p.suggestedDays, "forslag", "forslag") }[kind];
       li.appendChild(el("div", "period-dates", range(p.start, p.end) + " · " + who));
 
-      if (kind === "own") {
-        var ext = bestExtension(model, p);
-        if (ext) {
+      if (kind === "own" || kind === "mixed") {
+        var t = tipFor(model, p);
+        if (t) {
           var tip = el("div", "period-tip");
-          tip.appendChild(el("span", null, ext.text));
+          tip.appendChild(el("span", null, tipText(t)));
           var add = el("button", "link-btn", "Legg til");
           add.type = "button";
-          add.addEventListener("click", function () {
-            ext.keys.forEach(function (k) { state.own[k] = true; });
-            update();
-          });
+          add.addEventListener("click", function () { addTip(t); });
           tip.appendChild(add);
           li.appendChild(tip);
         }
@@ -490,19 +539,17 @@
     if (d.weekend) classes.push("weekend");
     if (d.holiday) { classes.push("holiday"); notes.push(d.holiday); }
     if (d.extra) { classes.push("extra"); notes.push(d.extra); }
-    if (d.squeeze) { classes.push("squeeze"); notes.push("Inneklemt dag"); }
+    if (d.squeeze) { classes.push("squeeze"); notes.push("Inneklemt dag – kobler to friperioder med én feriedag"); }
     if (d.school) { classes.push("school"); notes.push(d.school + " (skole)"); }
     if (d.suggested) { classes.push("suggested"); notes.push("Forslag"); }
-    if (d.summer) { classes.push(past ? "taken" : "own"); notes.push("Sommerferie"); }
+    if (d.summer) { classes.push(past ? "taken" : "own"); notes.push("Fellesferie"); }
     else if (d.locked) { classes.push(past ? "taken" : "own"); notes.push(past ? "Tatt ut" : "Valgt feriedag"); }
     if (value) {
       if (state.showValues || d.suggested) classes.push("val-" + valueTier(value.ratio));
-      notes.push(value.extends
-        ? "Legg til " + plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
-          " dager fri i stedet for " + value.extends + " (" + shortRange(value.start, value.end) + ")"
-        : "Verdi: ta fri " + shortRange(value.start, value.end) + " med " +
-          plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
-          " dager fri (+" + value.gain + " ekstra)");
+      notes.push((value.own ? "Bygger på dine dager: ta fri " : "Verdi: ta fri ") +
+        shortRange(value.takeStart, value.takeEnd) + " (" + plural(value.cost, "feriedag", "feriedager") +
+        ") → " + value.length + " dager fri i strekk, " + shortRange(value.start, value.end) +
+        " (+" + value.gain + " koblet på)");
     }
     if (past) classes.push("past");
     if (d.key === todayKey) classes.push("today");
@@ -584,8 +631,6 @@
       julaften: document.getElementById("opt-julaften"),
       nyttarsaften: document.getElementById("opt-nyttarsaften"),
       schoolOn: document.getElementById("school-on"),
-      winterWeek: document.getElementById("winter-week"),
-      autumnWeek: document.getElementById("autumn-week"),
       showSuggestions: document.getElementById("show-suggestions"),
       showValues: document.getElementById("show-values")
     };
@@ -599,8 +644,6 @@
     inputs.julaften.checked = state.julaften;
     inputs.nyttarsaften.checked = state.nyttarsaften;
     inputs.schoolOn.checked = state.schoolOn;
-    inputs.winterWeek.value = state.winterWeek;
-    inputs.autumnWeek.value = state.autumnWeek;
     inputs.showSuggestions.checked = state.showSuggestions;
     inputs.showValues.checked = state.showValues;
 
@@ -614,8 +657,6 @@
       state.julaften = inputs.julaften.checked;
       state.nyttarsaften = inputs.nyttarsaften.checked;
       state.schoolOn = inputs.schoolOn.checked;
-      state.winterWeek = clampInt(inputs.winterWeek.value, 6, 11, 8);
-      state.autumnWeek = clampInt(inputs.autumnWeek.value, 38, 44, 40);
       state.showSuggestions = inputs.showSuggestions.checked;
       state.showValues = inputs.showValues.checked;
       update();
@@ -648,6 +689,7 @@
     document.getElementById("school-fields").classList.toggle("disabled", !state.schoolOn);
     renderYearPicker();
     renderWorkdays();
+    renderWeekChips();
     renderSummary(model);
     renderCalendar(model);
     save();

@@ -7,11 +7,11 @@ En nettside som hjelper deg å planlegge feriedagene slik at du får flest mulig
 * Inneklemte dager markeres
 * Verdikart som viser hvilke dager som er mest verdt å ta fri
 * Forslag som bare bruker feriedagene som faktisk gir ekstra fridager – resten plasserer du selv
-* Sett av sommerferie, og klikk på dager i kalenderen for å legge inn egne feriedager
+* Sett av fellesferie, og klikk på dager i kalenderen for å legge inn egne feriedager
   (dobbeltklikk på en senere dag fyller hele perioden fra dagen du klikket sist)
 * Registrer ferie du allerede har tatt ut ved å klikke på dager som har vært
-* Live verdi: viser hva du får ved å legge til dager rundt det du har valgt
-  («+2 feriedager → 9 dager fri i stedet for 5»)
+* Live verdi: viser hva du får ved å bygge videre på dagene du har valgt
+  («Tar du også tirsdag–torsdag, henger periodene sammen: 9 dager fri»)
 * Skoleferier (vinterferie, påske, sommer, høstferie, jul) i kalenderen
 * Valg som påvirker verdien: hvilke dager du jobber, fri på julaften/nyttårsaften,
   hvor mange feriedager du vil bruke på én fri og hvor kresen du er
@@ -31,46 +31,51 @@ public/
 tests/              Tester for logikken (Node.js)
 ```
 
-### Verdimodellen
+### Verdimodellen: fridager du kobler sammen
 
-Tar du fri på noen arbeidsdager, smelter de sammen med helger og røde dager rundt til én
-sammenhengende friperiode. **Verdien** (bonus) er hvor mange *ekstra* fridager du får
-sammenlignet med å bruke like mange feriedager i en helt vanlig uke uten røde dager:
+Tar du fri på noen arbeidsdager, smelter de sammen med fridagene rundt til én
+sammenhengende friperiode. Fridager du har uansett (helger, røde dager og feriedager du
+allerede har valgt) ligger i friblokker. **Verdien** er hvor mange fridager valget kobler på
+utover den største friblokken du har uansett, og utover det samme antall feriedager kobler
+sammen i en vanlig uke:
 
 ```
-bonus = lengde på friperioden − vanlig lengde for samme antall feriedager
+verdi = lengde på friperioden − feriedager brukt − største friblokk − vanlig uke
 ```
 
-| Feriedager | Vanlig lengde (man–fre) |
-|-----------:|------------------------:|
-| 1          | 3 (langhelg)            |
-| 2          | 4                       |
-| 5          | 9 (en uke med helger)   |
+| Eksempel (2027)                                    | Regnestykke      | Verdi |
+|----------------------------------------------------|------------------|------:|
+| Inneklemt fredag etter Kristi himmelfart           | 4 − 1 − 2 − 0    | **+1** |
+| Mandag–onsdag før påske (helgen kobles til påsken) | 10 − 3 − 5 − 0   | **+2** |
+| Onsdag før skjærtorsdag alene                      | 6 − 1 − 5 − 0    | 0 |
+| Mandag 4. januar (1. januar er en fredag)          | 4 − 1 − 3 − 0    | 0 |
+| Helt vanlig uke                                    | 9 − 5 − 2 − 2    | 0 |
+| Mandag og fredag valgt, ta tirsdag–torsdag         | 9 − 3 − 3 − 0    | **+3** |
 
-Eksempler for 2027:
-
-* Fredag etter Kristi himmelfart: 1 feriedag → 4 dager fri, **+1**
-* Mandag–onsdag før påske: 3 feriedager → 10 dager fri, **+5**
-* En helt vanlig uke: 5 feriedager → 9 dager fri, **+0** (foreslås ikke)
+Inneklemte dager gir dermed høyest verdi per feriedag (+1 for 1 dag).
 
 Brukerens valg påvirker verdien:
 
-* **Dager jeg jobber**: hva som regnes som fridager og som «vanlig» lengde
+* **Dager jeg jobber**: hva som er fridager, og hva en «vanlig uke» kobler sammen
 * **Julaften / nyttårsaften**: regnes som fridager
 * **Hvor mange feriedager på én fri**: lengste uttak som vurderes (1 = bare inneklemte dager)
-* **Hvor kresen er du**: minste bonus per feriedag for at noe foreslås
-* **Egne feriedager og sommerferie**: låses, og bare *økningen* i bonus teller når et forslag
-  bygger videre på dem
+* **Hvor kresen er du**: minste verdi per feriedag for at noe foreslås
+* **Egne feriedager og fellesferie**: regnes som fridager, så verdikart, forslag og tips
+  oppdateres live rundt dem
 
-`planner.js` har tre deler:
+`planner.js` har fire deler:
 
 * `dayValues()` lager verdikartet: for hver dag det beste uttaket den inngår i.
-* `extensionOptions()` finner hva egne perioder vokser til hvis du legger til dager
-  rett før eller etter dem. Dette inngår også i verdikartet.
-* `optimize()` velger de verdifulle uttakene som til sammen gir mest bonus innenfor
+* `optimize()` velger de verdifulle uttakene som til sammen gir mest verdi innenfor
   budsjettet. Den løses eksakt med dynamisk programmering, og testene sjekker den mot
-  brute force. Dager uten bonus brukes ikke, så feriedager blir stående igjen til deg.
-* `vacationPeriods()` oppsummerer friperiodene med lengde og bonus.
+  brute force. Dager uten verdi brukes ikke, så feriedager blir stående igjen til deg.
+* `ownSuggestions()` gir live tips som bygger videre på dagene du har valgt.
+* `vacationPeriods()` oppsummerer friperiodene med lengde og verdi.
+
+### Skoleferier
+
+Vinter- og høstferie velges med ukeknapper. Planen er at ukene på sikt forhåndsvelges per
+kommune eller fylke fra en tabell som oppdateres hvert år.
 
 ## Kjøre lokalt
 

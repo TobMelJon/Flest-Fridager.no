@@ -416,6 +416,38 @@ select {
   color: var(--muted);
 }
 
+.sublabel {
+  display: block;
+  font-size: 0.85rem;
+  margin: 8px 0 4px;
+}
+
+#school-fields.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.live-tips {
+  margin: -6px 0 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--val-1);
+  color: var(--val-text);
+}
+
+.live-tips ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.live-tips li {
+  margin: 4px 0;
+}
+
+.live-tips .link-btn {
+  margin-left: 8px;
+}
+
 .howto {
   font-size: 0.85rem;
   color: var(--muted);
@@ -502,7 +534,7 @@ select {
 
 .sw-holiday { background: var(--holiday-bg); border: 1px solid var(--holiday); }
 .sw-weekend { background: var(--weekend-bg); }
-.sw-squeeze { width: 7px; height: 7px; border-radius: 50%; background: var(--holiday); }
+.sw-squeeze { background: linear-gradient(225deg, var(--holiday) 45%, var(--val-3) 46%); }
 .sw-school { height: 4px; background: var(--school); }
 .sw-suggested { background: var(--val-2); border: 2px dashed var(--suggested-bg); }
 .sw-own { background: var(--own-bg); }
@@ -616,16 +648,17 @@ button.day:focus-visible {
 .day.val-2 { background: var(--val-2); color: var(--val-text); }
 .day.val-3 { background: var(--val-3); color: var(--val-text); font-weight: 700; }
 
-/* Inneklemt dag: liten prikk oppe til høyre. */
+/* Inneklemt dag: rødt hjørne oppe til høyre (i tillegg til mørkeste verdifarge). */
 .day.squeeze::after {
   content: "";
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--holiday);
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 11px solid var(--holiday);
+  border-left: 11px solid transparent;
+  border-top-right-radius: 4px;
 }
 
 /* Skoleferie: strek nederst i cellen. */

@@ -57,8 +57,8 @@
       </div>
 
       <fieldset class="field">
-        <legend class="label">Sommerferie</legend>
-        <label class="check"><input type="checkbox" id="summer-on" checked> Sett av sommerferie først</label>
+        <legend class="label">Fellesferie</legend>
+        <label class="check"><input type="checkbox" id="summer-on" checked> Sett av fellesferie først</label>
         <div class="inline" id="summer-fields">
           <label>fra uke <input type="number" id="summer-week" min="1" max="52" value="28"></label>
           <label>i <input type="number" id="summer-weeks" min="1" max="6" value="3"> uker</label>
@@ -74,11 +74,13 @@
       <fieldset class="field">
         <legend class="label">Skoleferier</legend>
         <label class="check"><input type="checkbox" id="school-on" checked> Vis skoleferier</label>
-        <div class="inline" id="school-fields">
-          <label>vinterferie uke <input type="number" id="winter-week" min="6" max="11" value="8"></label>
-          <label>høstferie uke <input type="number" id="autumn-week" min="38" max="44" value="40"></label>
+        <div id="school-fields">
+          <span class="sublabel">Vinterferie</span>
+          <div class="chips" id="winter-weeks" role="group" aria-label="Uke for vinterferie"></div>
+          <span class="sublabel">Høstferie</span>
+          <div class="chips" id="autumn-weeks" role="group" aria-label="Uke for høstferie"></div>
         </div>
-        <small class="hint">Vinterferie er oftest uke 8 eller 9, høstferie uke 40 eller 41. Sjekk skoleruta i din kommune.</small>
+        <small class="hint">Ukene varierer mellom kommuner. Sjekk skoleruta der du bor.</small>
       </fieldset>
 
       <fieldset class="field">
@@ -101,21 +103,22 @@
     <section class="content">
       <div class="panel summary" aria-live="polite">
         <div class="stats" id="stats"></div>
+        <div class="live-tips" id="live-tips" hidden></div>
         <p class="remaining" id="remaining"></p>
         <h2>Ferieplan <small>sortert etter verdi</small></h2>
         <ol class="periods" id="periods"></ol>
         <details class="explain">
           <summary>Slik regnes verdien ut</summary>
-          <p>Tar du fri på en arbeidsdag, smelter den sammen med helger og røde dager rundt til én friperiode.
-            <strong>Verdien</strong> er hvor mange <em>ekstra</em> fridager du får sammenlignet med å bruke like mange
-            feriedager i en helt vanlig uke uten røde dager.</p>
-          <p>I en vanlig uke gir 1 feriedag 3 dager fri (langhelg), og 5 feriedager gir 9 dager fri.
-            Den inneklemte fredagen etter Kristi himmelfart gir 4 dager fri for 1 feriedag, altså <strong>+1</strong>.
-            Mandag–onsdag før påske gir 10 dager fri for 3 feriedager, altså <strong>+5</strong>.</p>
-          <p>Feriedager uten ekstra verdi koster det samme uansett hvor du legger dem, så de foreslås ikke.
+          <p>Tar du fri på en arbeidsdag, smelter den sammen med fridagene rundt til én friperiode.
+            <strong>Verdien</strong> er hvor mange fridager du <em>kobler på</em>, utover den største friblokken
+            du har uansett og det samme antall feriedager gir i en vanlig uke.</p>
+          <p>Den inneklemte fredagen etter Kristi himmelfart kobler torsdagen til helgen: 1 feriedag gir <strong>+1</strong>.
+            Det er det beste du kan få per feriedag. Mandag–onsdag før påske kobler helgen til påskefriperioden:
+            3 feriedager gir <strong>+2</strong>. Onsdagen før skjærtorsdag alene gir ingenting, for påsken er fri uansett.</p>
+          <p>Dager du har valgt selv regnes som fridager. Har du valgt mandag og fredag, viser siden at
+            tirsdag–torsdag kobler dem sammen til 9 dager fri.</p>
+          <p>Feriedager uten verdi koster det samme uansett hvor du legger dem, så de foreslås ikke.
             Dem plasserer du selv der det passer deg.</p>
-          <p>Når du har valgt dager selv, viser verdikartet også hva du får ved å bygge videre på dem.
-            Har du tatt onsdag–fredag (5 dager fri), gir mandag–tirsdag samme uke 9 dager fri.</p>
         </details>
         <div class="school-overview" id="school-overview"></div>
         <details class="squeeze-list">
@@ -127,7 +130,7 @@
       <div class="legend" aria-label="Forklaring">
         <span><i class="sw sw-holiday"></i>Rød dag</span>
         <span><i class="sw sw-weekend"></i>Helg</span>
-        <span><i class="sw sw-squeeze"></i>Inneklemt dag</span>
+        <span><i class="sw sw-squeeze"></i>Inneklemt dag (mest verdt)</span>
         <span><i class="sw sw-school"></i>Skoleferie</span>
         <span class="legend-values"><i class="sw val-3"></i><i class="sw val-2"></i><i class="sw val-1"></i>Verdi ved å ta fri (mørkere = mer verdt)</span>
         <span><i class="sw sw-suggested"></i>Forslag</span>
