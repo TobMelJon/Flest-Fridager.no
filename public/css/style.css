@@ -23,6 +23,7 @@
   --val-2: #f8d978;
   --val-3: #eeb422;
   --val-text: #4a3500;
+  --val-3-text: #3a2900;
 
   --radius: 12px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
@@ -48,10 +49,11 @@
     --own-bg: #4c8dff;
     --taken-bg: #3e5479;
     --school: #a98bf5;
-    --val-1: #3b3418;
-    --val-2: #6b5713;
-    --val-3: #a8810f;
+    --val-1: #3a3318;
+    --val-2: #7a6216;
+    --val-3: #f2c230;
     --val-text: #fff3cc;
+    --val-3-text: #1f1600;
     --shadow: none;
   }
 }
@@ -376,6 +378,31 @@ select {
   font-size: 0.85rem;
 }
 
+.period-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pick-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--suggested-bg);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pick-btn:hover {
+  background: var(--suggested-bg);
+  color: var(--suggested-text);
+}
+
 .link-btn {
   font: inherit;
   font-weight: 600;
@@ -444,7 +471,32 @@ select {
   margin: 4px 0;
 }
 
-.live-tips .link-btn {
+.live-tips .period-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pick-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--suggested-bg);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pick-btn:hover {
+  background: var(--suggested-bg);
+  color: var(--suggested-text);
+}
+
+.link-btn {
   margin-left: 8px;
 }
 
@@ -646,7 +698,7 @@ button.day:focus-visible {
 
 .day.val-1 { background: var(--val-1); color: var(--val-text); }
 .day.val-2 { background: var(--val-2); color: var(--val-text); }
-.day.val-3 { background: var(--val-3); color: var(--val-text); font-weight: 700; }
+.day.val-3 { background: var(--val-3); color: var(--val-3-text); font-weight: 700; }
 
 /* Inneklemt dag: rødt hjørne oppe til høyre (i tillegg til mørkeste verdifarge). */
 .day.squeeze::after {

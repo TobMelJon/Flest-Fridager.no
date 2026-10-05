@@ -186,3 +186,22 @@ test("tidligere dager kan ikke foreslås, men kan være lagt inn som tatt ut", (
   const res = P.optimize(days, 25);
   res.chosen.forEach((i) => assert.ok(days[i].key >= "2026-10-05"));
 });
+
+test("2028 regnes ut fra påskeformelen, ikke hardkodet", () => {
+  const h = H.norwegianHolidays(2028);
+  assert.strictEqual(h["2028-04-16"], "Første påskedag");
+  assert.strictEqual(h["2028-05-25"], "Kristi himmelfartsdag");
+  assert.strictEqual(h["2028-06-05"], "Andre pinsedag");
+  const days = P.buildDays("2027-12-01", "2029-01-31", { planFrom: "2028-01-01", planTo: "2028-12-31" });
+  assert.deepStrictEqual(days.filter((d) => d.squeeze && d.key.startsWith("2028")).map((d) => d.key), ["2028-05-26"]);
+  const v = P.dayValues(days, { maxCost: 5 });
+  const fri = v[days.findIndex((d) => d.key === "2028-05-26")];
+  assert.strictEqual(fri.ratio, 1);
+});
+
+test("verdiene skiller 3.–5. mai fra 18.–21. mai når 7. mai er valgt", () => {
+  const days = P.buildDays("2027-04-15", "2027-06-15", { vacation: { "2027-05-07": true } });
+  const v = P.dayValues(days, { maxCost: 5 });
+  const at = (k) => v[days.findIndex((d) => d.key === k)];
+  assert.ok(at("2027-05-03").ratio > at("2027-05-18").ratio);
+});

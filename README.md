@@ -2,7 +2,7 @@
 
 En nettside som hjelper deg å planlegge feriedagene slik at du får flest mulig fridager:
 
-* Kalender for inneværende og neste år med ukenummer
+* Kalender for i år og de to neste årene, med ukenummer
 * Røde dager (norske helligdager, inkludert påske, Kristi himmelfart og pinse – regnes ut automatisk)
 * Inneklemte dager markeres
 * Verdikart som viser hvilke dager som er mest verdt å ta fri
@@ -53,6 +53,10 @@ verdi = lengde på friperioden − feriedager brukt − største friblokk − va
 | Mandag og fredag valgt, ta tirsdag–torsdag         | 9 − 3 − 3 − 0    | **+3** |
 
 Inneklemte dager gir dermed høyest verdi per feriedag (+1 for 1 dag).
+
+Verdikartet er relativt: den beste verdien per feriedag som er igjen får sterkest gul,
+nest beste neste nivå, og resten svakest. Velger du de beste dagene, blir de neste
+beste sterkest. «Hvor kresen er du» gjelder også verdikartet, så svake broer ikke vises.
 
 Brukerens valg påvirker verdien:
 

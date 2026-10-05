@@ -55,7 +55,7 @@
         });
       }
     } catch (e) { /* lagring er ikke tilgjengelig – bruk standardverdier */ }
-    if (state.year < thisYear || state.year > thisYear + 1) state.year = thisYear;
+    if (state.year < thisYear || state.year > thisYear + 2) state.year = thisYear;
     if (!Array.isArray(state.workdays)) state.workdays = [1, 2, 3, 4, 5];
     if (!state.own || typeof state.own !== "object") state.own = {};
   }
@@ -112,10 +112,12 @@
     return fmtShort.format(H.fromKey(startKey)) + "–" + fmtShort.format(H.fromKey(endKey));
   }
 
-  // Verdinivå 1–3 brukes til fargene i verdikartet.
-  function valueTier(ratio) {
-    if (ratio >= 1) return 3;
-    if (ratio >= 0.5) return 2;
+  // Verdinivå 1–3 til fargene i verdikartet, relativt til det beste som er igjen:
+  // beste verdi per feriedag får sterkest gul, nest beste neste nivå, resten svakest.
+  function valueTier(ratio, model) {
+    var r = Math.round(ratio * 1000);
+    if (r >= model.tierRatios[0]) return 3;
+    if (model.tierRatios.length > 1 && r >= model.tierRatios[1]) return 2;
     return 1;
   }
 
@@ -200,10 +202,21 @@
     var options = { workdays: state.workdays, maxCost: state.maxCost, minRatio: state.minRatio };
 
     // Verdikartet viser hva hver dag er verdt gitt det som allerede er lagt inn.
-    var values = P.dayValues(days, options);
+    // «Hvor kresen er du» gjelder også her, så svake broer ikke lyser opp.
+    var values = P.dayValues(days, options).map(function (v) {
+      return v && v.ratio >= state.minRatio - 1e-9 ? v : null;
+    });
+    var tierRatios = [];
+    values.forEach(function (v, i) {
+      if (!v || days[i].key < planFrom || days[i].key > planTo) return;
+      var r = Math.round(v.ratio * 1000);
+      if (tierRatios.indexOf(r) === -1) tierRatios.push(r);
+    });
+    tierRatios.sort(function (a, b) { return b - a; });
+
     var available = Math.max(0, state.budget - taken - planned);
     var tips = P.ownSuggestions(days, options).filter(function (t) {
-      return t.takeStart >= planFrom && t.takeEnd <= planTo;
+      return t.takeStart >= planFrom && t.takeEnd <= planTo && t.gain / t.cost >= state.minRatio - 1e-9;
     });
 
     var result = { chosen: [], used: 0, gained: 0 };
@@ -219,6 +232,7 @@
     return {
       days: days,
       values: values,
+      tierRatios: tierRatios,
       tips: tips,
       school: school,
       yearFrom: yearFrom,
@@ -237,7 +251,7 @@
   function renderYearPicker() {
     var box = document.getElementById("year-picker");
     box.textContent = "";
-    [thisYear, thisYear + 1].forEach(function (y) {
+    [thisYear, thisYear + 1, thisYear + 2].forEach(function (y) {
       var b = el("button", y === state.year ? "active" : "", String(y));
       b.type = "button";
       b.setAttribute("role", "radio");
@@ -306,6 +320,22 @@
       if (d.key >= t.takeStart && d.key <= t.takeEnd && !d.off && !d.locked) state.own[d.key] = true;
     });
     update();
+  }
+
+  // Velg alle foreslåtte dager i en periode, eller fjern egne dager i den.
+  function setPeriod(period, select) {
+    lastModel.days.forEach(function (d) {
+      if (d.key < period.start || d.key > period.end || d.summer) return;
+      if (select && d.suggested) state.own[d.key] = true;
+      if (!select && d.locked) delete state.own[d.key];
+    });
+    update();
+  }
+
+  function periodIsOnlySummer(model, period) {
+    return model.days.every(function (d) {
+      return d.key < period.start || d.key > period.end || !d.locked || d.summer;
+    });
   }
 
   // Beste live-tips som bygger videre på en egen periode.
@@ -395,6 +425,21 @@
       var who = { taken: "Tatt ut", suggested: "Forslag", own: "Valgt av deg",
         mixed: "Valgt av deg + " + plural(p.suggestedDays, "forslag", "forslag") }[kind];
       li.appendChild(el("div", "period-dates", range(p.start, p.end) + " · " + who));
+
+      var actions = el("div", "period-actions");
+      if (kind === "suggested" || kind === "mixed") {
+        var pick = el("button", "pick-btn", kind === "mixed" ? "Velg forslagene her" : "Velg");
+        pick.type = "button";
+        pick.addEventListener("click", function () { setPeriod(p, true); });
+        actions.appendChild(pick);
+      }
+      if (kind === "own" || kind === "mixed" || kind === "taken") {
+        var drop = el("button", "link-btn", "Fjern");
+        drop.type = "button";
+        drop.addEventListener("click", function () { setPeriod(p, false); });
+        if (p.ownDays > 0 && !periodIsOnlySummer(model, p)) actions.appendChild(drop);
+      }
+      if (actions.childNodes.length) li.appendChild(actions);
 
       if (kind === "own" || kind === "mixed") {
         var t = tipFor(model, p);
@@ -545,7 +590,7 @@
     if (d.summer) { classes.push(past ? "taken" : "own"); notes.push("Fellesferie"); }
     else if (d.locked) { classes.push(past ? "taken" : "own"); notes.push(past ? "Tatt ut" : "Valgt feriedag"); }
     if (value) {
-      if (state.showValues || d.suggested) classes.push("val-" + valueTier(value.ratio));
+      if (state.showValues || d.suggested) classes.push("val-" + valueTier(value.ratio, model));
       notes.push((value.own ? "Bygger på dine dager: ta fri " : "Verdi: ta fri ") +
         shortRange(value.takeStart, value.takeEnd) + " (" + plural(value.cost, "feriedag", "feriedager") +
         ") → " + value.length + " dager fri i strekk, " + shortRange(value.start, value.end) +
