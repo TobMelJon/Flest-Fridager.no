@@ -144,3 +144,42 @@ test("DP gir samme optimum som brute force", () => {
     }
   }
 });
+
+test("skoleferier: påskeferie fra lørdag før palmesøndag til 2. påskedag", () => {
+  const list = H.schoolHolidays(2027, { winterWeek: 9, autumnWeek: 41 });
+  const by = Object.fromEntries(list.map((s) => [s.name, s]));
+  assert.deepStrictEqual([by.Påskeferie.start, by.Påskeferie.end], ["2027-03-20", "2027-03-29"]);
+  assert.deepStrictEqual([by.Vinterferie.start, by.Vinterferie.end], ["2027-03-01", "2027-03-05"]);
+  assert.deepStrictEqual([by.Høstferie.start, by.Høstferie.end], ["2027-10-11", "2027-10-15"]);
+  assert.strictEqual(by.Juleferie.approx, true);
+});
+
+test("live verdi: onsdag–fredag + mandag–tirsdag gir 9 dager i stedet for 5", () => {
+  const days = P.buildDays("2027-09-01", "2027-11-30", {
+    vacation: { "2027-10-06": true, "2027-10-07": true, "2027-10-08": true }
+  });
+  const runs = P.extensionOptions(days, { maxCost: 5 });
+  assert.strictEqual(runs.length, 1);
+  assert.strictEqual(runs[0].length, 5);
+  const best = runs[0].options[0];
+  assert.strictEqual(best.cost, 2);
+  assert.strictEqual(best.length, 9);
+  assert.deepStrictEqual(best.take.map((i) => days[i].key), ["2027-10-04", "2027-10-05"]);
+
+  // Verdikartet viser det samme på mandag og tirsdag.
+  const values = P.dayValues(days, { maxCost: 5 });
+  const mon = values[days.findIndex((d) => d.key === "2027-10-04")];
+  assert.strictEqual(mon.length, 9);
+  assert.strictEqual(mon.extends, 5);
+});
+
+test("tidligere dager kan ikke foreslås, men kan være lagt inn som tatt ut", () => {
+  const days = P.buildDays("2026-01-01", "2026-12-31", {
+    planFrom: "2026-10-05",
+    vacation: { "2026-05-15": true }
+  });
+  const fri = days.find((d) => d.key === "2026-05-15");
+  assert.strictEqual(fri.locked, true);
+  const res = P.optimize(days, 25);
+  res.chosen.forEach((i) => assert.ok(days[i].key >= "2026-10-05"));
+});

@@ -30,12 +30,19 @@
     summerWeeks: 3,
     julaften: false,
     nyttarsaften: false,
+    schoolOn: true,
+    winterWeek: 8,
+    autumnWeek: 40,
     showSuggestions: true,
     showValues: true,
     own: {}
   };
 
   var lastModel = null;
+
+  // Siste dag brukeren klikket inn (startpunkt for dobbeltklikk).
+  var anchor = null;
+  var anchorBeforeClick = null;
 
   // ---------- Lagring (kun i brukerens nettleser) ----------
 
@@ -50,6 +57,7 @@
     } catch (e) { /* lagring er ikke tilgjengelig – bruk standardverdier */ }
     if (state.year < thisYear || state.year > thisYear + 1) state.year = thisYear;
     if (!Array.isArray(state.workdays)) state.workdays = [1, 2, 3, 4, 5];
+    if (!state.own || typeof state.own !== "object") state.own = {};
   }
 
   function save() {
@@ -78,13 +86,6 @@
     return 1 + Math.round(((d - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
   }
 
-  // Mandag i ISO-uke `week` for `year`.
-  function mondayOfWeek(year, week) {
-    var jan4 = H.makeDate(year, 1, 4);
-    var monday = H.addDays(jan4, -((jan4.getUTCDay() + 6) % 7));
-    return H.addDays(monday, (week - 1) * 7);
-  }
-
   function clampInt(value, min, max, fallback) {
     var n = parseInt(value, 10);
     if (isNaN(n)) return fallback;
@@ -104,6 +105,11 @@
 
   function range(startKey, endKey) {
     return fmtDay.format(H.fromKey(startKey)) + " – " + fmtDay.format(H.fromKey(endKey));
+  }
+
+  function shortRange(startKey, endKey) {
+    if (startKey === endKey) return fmtShort.format(H.fromKey(startKey));
+    return fmtShort.format(H.fromKey(startKey)) + "–" + fmtShort.format(H.fromKey(endKey));
   }
 
   // Verdinivå 1–3 brukes til fargene i verdikartet.
@@ -128,6 +134,11 @@
       if (/nyttår/i.test(h)) add("Nyttår");
       if (d.summer) add("Sommerferie");
     });
+    if (!names.length) {
+      days.forEach(function (d) {
+        if (d.key >= period.start && d.key <= period.end && d.school) add(d.school);
+      });
+    }
     return names.length ? names.join(" og ") : "Ferie";
   }
 
@@ -135,7 +146,8 @@
 
   function compute() {
     var year = state.year;
-    var planFrom = year === thisYear ? todayKey : year + "-01-01";
+    var yearFrom = year + "-01-01";
+    var planFrom = year === thisYear ? todayKey : yearFrom;
     var planTo = year + "-12-31";
 
     var extraOff = {};
@@ -147,10 +159,9 @@
 
     var summer = {};
     if (state.summerOn) {
-      var start = mondayOfWeek(year, state.summerWeek);
+      var start = H.mondayOfIsoWeek(year, state.summerWeek);
       for (var i = 0; i < state.summerWeeks * 7; i++) {
-        var key = H.toKey(H.addDays(start, i));
-        if (key >= planFrom) summer[key] = true;
+        summer[H.toKey(H.addDays(start, i))] = true;
       }
     }
 
@@ -166,17 +177,32 @@
       planTo: planTo
     });
 
-    var lockedInPlan = 0;
+    // Skoleferier som berører året (juleferien starter året før).
+    var school = [];
+    if (state.schoolOn) {
+      var opts = { winterWeek: state.winterWeek, autumnWeek: state.autumnWeek };
+      school = H.schoolHolidays(year - 1, opts).concat(H.schoolHolidays(year, opts))
+        .filter(function (s) { return s.end >= yearFrom && s.start <= planTo; });
+    }
+
+    var taken = 0;
+    var planned = 0;
     days.forEach(function (d) {
       d.summer = d.locked && !!summer[d.key];
-      if (d.locked && d.key >= planFrom && d.key <= planTo) lockedInPlan++;
+      d.school = null;
+      school.forEach(function (s) { if (d.key >= s.start && d.key <= s.end) d.school = s.name; });
+      if (d.locked && d.key >= yearFrom && d.key <= planTo) {
+        if (d.key < planFrom) taken++;
+        else planned++;
+      }
     });
 
     var options = { workdays: state.workdays, maxCost: state.maxCost, minRatio: state.minRatio };
-    var available = Math.max(0, state.budget - lockedInPlan);
+    var available = Math.max(0, state.budget - taken - planned);
 
     // Verdikartet viser hva hver dag er verdt gitt det som allerede er lagt inn.
     var values = P.dayValues(days, options);
+    var extensions = P.extensionOptions(days, options);
 
     var result = { chosen: [], used: 0, gained: 0 };
     if (state.showSuggestions) {
@@ -185,15 +211,19 @@
     }
 
     var periods = P.vacationPeriods(days, options).filter(function (p) {
-      return p.end >= planFrom && p.start <= planTo;
+      return p.end >= yearFrom && p.start <= planTo;
     });
 
     return {
       days: days,
       values: values,
+      extensions: extensions,
+      school: school,
+      yearFrom: yearFrom,
       planFrom: planFrom,
       planTo: planTo,
-      lockedInPlan: lockedInPlan,
+      taken: taken,
+      planned: planned,
       available: available,
       result: result,
       periods: periods
@@ -212,6 +242,7 @@
       b.setAttribute("aria-checked", y === state.year ? "true" : "false");
       b.addEventListener("click", function () {
         state.year = y;
+        anchor = anchorBeforeClick = null;
         update();
       });
       box.appendChild(b);
@@ -235,6 +266,23 @@
     });
   }
 
+  // Beste utvidelse for en egen periode, som en kort tekst og dagene som legges til.
+  function bestExtension(model, period) {
+    var run = null;
+    model.extensions.forEach(function (r) {
+      if (r.start === period.start && r.end === period.end) run = r;
+    });
+    if (!run || !run.options.length) return null;
+    var o = run.options[0];
+    var keys = o.take.map(function (i) { return model.days[i].key; });
+    return {
+      text: "+" + plural(o.cost, "feriedag", "feriedager") + " (" +
+        shortRange(keys[0], keys[keys.length - 1]) + ") → " + o.length +
+        " dager fri i stedet for " + period.length,
+      keys: keys
+    };
+  }
+
   function renderSummary(model) {
     var year = state.year;
     var res = model.result;
@@ -248,9 +296,9 @@
     stats.textContent = "";
     [
       ["+" + bonus, "ekstra fridager i planen"],
-      [res.used, "verdifulle dager foreslått"],
-      [left, "feriedager igjen å plassere selv"],
-      [squeeze.length, "inneklemte dager i " + year]
+      [model.taken + model.planned, year === thisYear ? "tatt ut eller planlagt" : "planlagt"],
+      [res.used, "foreslått"],
+      [left, "igjen å plassere selv"]
     ].forEach(function (s) {
       var box = el("div", "stat");
       box.appendChild(el("strong", null, String(s[0])));
@@ -282,7 +330,8 @@
       list.appendChild(el("li", "empty", "Ingen feriedager lagt inn eller foreslått ennå."));
     }
     sorted.forEach(function (p) {
-      var kind = p.ownDays === 0 ? "suggested" : (p.suggestedDays === 0 ? "own" : "mixed");
+      var past = p.end < model.planFrom;
+      var kind = past ? "taken" : (p.ownDays === 0 ? "suggested" : (p.suggestedDays === 0 ? "own" : "mixed"));
       var li = el("li", "period-" + kind);
       var title = el("div", "period-title");
       title.appendChild(el("strong", null, periodLabel(model.days, p)));
@@ -290,12 +339,30 @@
         p.bonus > 0 ? "+" + p.bonus + " ekstra" : "ingen ekstra"));
       li.appendChild(title);
       li.appendChild(el("div", "period-calc",
-        plural(p.vacationDays, "feriedag", "feriedager") + " → " + p.length + " dager fri"));
-      var who = kind === "suggested" ? "Forslag" : (kind === "own" ? "Din ferie" :
-        "Din ferie + " + plural(p.suggestedDays, "foreslått dag", "foreslåtte dager"));
+        plural(p.vacationDays, "feriedag", "feriedager") + " → " + plural(p.length, "dag", "dager") + " fri"));
+      var who = { taken: "Tatt ut", suggested: "Forslag", own: "Valgt av deg",
+        mixed: "Valgt av deg + " + plural(p.suggestedDays, "forslag", "forslag") }[kind];
       li.appendChild(el("div", "period-dates", range(p.start, p.end) + " · " + who));
+
+      if (kind === "own") {
+        var ext = bestExtension(model, p);
+        if (ext) {
+          var tip = el("div", "period-tip");
+          tip.appendChild(el("span", null, ext.text));
+          var add = el("button", "link-btn", "Legg til");
+          add.type = "button";
+          add.addEventListener("click", function () {
+            ext.keys.forEach(function (k) { state.own[k] = true; });
+            update();
+          });
+          tip.appendChild(add);
+          li.appendChild(tip);
+        }
+      }
       list.appendChild(li);
     });
+
+    renderSchoolOverview(model);
 
     var sq = document.getElementById("squeeze-days");
     sq.textContent = "";
@@ -305,36 +372,67 @@
     if (!squeeze.length) sq.appendChild(el("li", null, "Ingen inneklemte dager i " + year + "."));
 
     // Hint under feriedagsfeltet.
-    document.getElementById("budget-label").textContent =
-      year === thisYear ? "Feriedager du har igjen i år" : "Feriedager i " + year;
+    document.getElementById("budget-label").textContent = "Feriedager i " + year;
     var hint = document.getElementById("budget-hint");
-    var over = model.lockedInPlan - state.budget;
+    var over = model.taken + model.planned - state.budget;
+    var parts = [];
+    if (year === thisYear) parts.push(model.taken + " tatt ut");
+    parts.push(model.planned + " planlagt", res.used + " foreslått", left + " igjen");
     hint.textContent = over > 0
       ? "Du har lagt inn " + plural(over, "dag", "dager") + " mer enn du har."
-      : model.lockedInPlan + " lagt inn · " + res.used + " foreslått · " + left + " igjen";
+      : parts.join(" · ");
     hint.classList.toggle("warn", over > 0);
 
     document.getElementById("accept").disabled = res.used === 0;
   }
 
-  function renderCalendar(model) {
-    var year = state.year;
-    var byKey = {};
-    model.days.forEach(function (d, i) { byKey[d.key] = i; });
+  function renderSchoolOverview(model) {
+    var box = document.getElementById("school-overview");
+    box.textContent = "";
+    // Juleferien som startet året før vises i kalenderen, men ikke i oversikten.
+    var list = model.school.filter(function (s) { return s.start >= model.yearFrom; });
+    box.hidden = !list.length;
+    if (!list.length) return;
+    box.appendChild(el("h3", null, "Skoleferier " + state.year));
+    var ul = el("ul");
+    list.forEach(function (s) {
+      var li = el("li");
+      li.appendChild(el("strong", null, s.name));
+      var weekNote = (s.name === "Vinterferie" || s.name === "Høstferie")
+        ? " · uke " + isoWeek(H.fromKey(s.start)) : "";
+      li.appendChild(el("span", null, (s.approx ? "ca. " : "") + shortRange(s.start, s.end) + weekNote));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
 
+  // Kalenderen bygges én gang per år; senere oppdateres bare cellene. Da blir
+  // knappene stående mellom to klikk, slik at nettleserens dobbeltklikk virker.
+  var cells = {};
+  var monthNotes = [];
+  var builtYear = null;
+
+  function buildCalendar(year) {
     var cal = document.getElementById("calendar");
     cal.textContent = "";
+    cells = {};
+    monthNotes = [];
 
     for (var m = 1; m <= 12; m++) {
       var card = el("section", "month");
-      card.appendChild(el("h3", null, MONTHS[m - 1] + " " + year));
+      var head = el("div", "month-head");
+      head.appendChild(el("h3", null, MONTHS[m - 1] + " " + year));
+      var notes = el("div", "month-notes");
+      head.appendChild(notes);
+      monthNotes.push(notes);
+      card.appendChild(head);
 
       var table = el("table");
-      var head = el("tr");
-      head.appendChild(el("th", "wk", "Uke"));
-      WEEKDAYS.forEach(function (w) { head.appendChild(el("th", null, w[0])); });
+      var tr = el("tr");
+      tr.appendChild(el("th", "wk", "Uke"));
+      WEEKDAYS.forEach(function (w) { tr.appendChild(el("th", null, w[0])); });
       var thead = el("thead");
-      thead.appendChild(head);
+      thead.appendChild(tr);
       table.appendChild(thead);
 
       var tbody = el("tbody");
@@ -346,8 +444,12 @@
         for (var c = 0; c < 7; c++) {
           var td = el("td");
           if (cursor.getUTCMonth() === m - 1) {
-            var idx = byKey[H.toKey(cursor)];
-            fillCell(td, model.days[idx], model.values[idx], model);
+            var key = H.toKey(cursor);
+            var b = el("button", "day", String(cursor.getUTCDate()));
+            b.type = "button";
+            b.setAttribute("data-key", key);
+            td.appendChild(b);
+            cells[key] = b;
           }
           row.appendChild(td);
           cursor = H.addDays(cursor, 1);
@@ -359,48 +461,114 @@
       card.appendChild(table);
       cal.appendChild(card);
     }
+    builtYear = year;
   }
 
-  function fillCell(td, d, value, model) {
+  function renderCalendar(model) {
+    if (builtYear !== state.year) buildCalendar(state.year);
+
+    model.days.forEach(function (d, i) {
+      var node = cells[d.key];
+      if (node) updateCell(node, d, model.values[i], model);
+    });
+
+    monthNotes.forEach(function (box, idx) {
+      var m = String(idx + 1).padStart(2, "0");
+      var from = state.year + "-" + m + "-01";
+      var to = state.year + "-" + m + "-31";
+      box.textContent = "";
+      model.school.forEach(function (s) {
+        if (s.end >= from && s.start <= to) box.appendChild(el("span", "chip-school", s.name));
+      });
+    });
+  }
+
+  function updateCell(node, d, value, model) {
     var classes = ["day"];
     var notes = [];
+    var past = d.key < model.planFrom;
     if (d.weekend) classes.push("weekend");
     if (d.holiday) { classes.push("holiday"); notes.push(d.holiday); }
     if (d.extra) { classes.push("extra"); notes.push(d.extra); }
     if (d.squeeze) { classes.push("squeeze"); notes.push("Inneklemt dag"); }
-    if (d.suggested) { classes.push("suggested"); notes.push("Foreslått feriedag"); }
-    if (d.summer) { classes.push("own"); notes.push("Sommerferie"); }
-    else if (d.locked) { classes.push("own"); notes.push("Egen feriedag"); }
+    if (d.school) { classes.push("school"); notes.push(d.school + " (skole)"); }
+    if (d.suggested) { classes.push("suggested"); notes.push("Forslag"); }
+    if (d.summer) { classes.push(past ? "taken" : "own"); notes.push("Sommerferie"); }
+    else if (d.locked) { classes.push(past ? "taken" : "own"); notes.push(past ? "Tatt ut" : "Valgt feriedag"); }
     if (value) {
-      if (state.showValues && !d.suggested) classes.push("val-" + valueTier(value.ratio));
-      notes.push("Verdi: ta fri " + fmtShort.format(H.fromKey(value.start)) + "–" +
-        fmtShort.format(H.fromKey(value.end)) + " med " +
-        plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
-        " dager fri (+" + value.gain + " ekstra)");
+      if (state.showValues || d.suggested) classes.push("val-" + valueTier(value.ratio));
+      notes.push(value.extends
+        ? "Legg til " + plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
+          " dager fri i stedet for " + value.extends + " (" + shortRange(value.start, value.end) + ")"
+        : "Verdi: ta fri " + shortRange(value.start, value.end) + " med " +
+          plural(value.cost, "feriedag", "feriedager") + " → " + value.length +
+          " dager fri (+" + value.gain + " ekstra)");
     }
-    if (d.key < model.planFrom) classes.push("past");
+    if (past) classes.push("past");
     if (d.key === todayKey) classes.push("today");
 
-    var clickable = !d.off && !d.summer && d.key >= model.planFrom;
-    var node;
+    var clickable = !d.off && !d.summer;
     if (clickable) {
-      node = el("button", classes.join(" "), String(d.date.getUTCDate()));
-      node.type = "button";
-      node.addEventListener("click", function () { toggleOwn(d); });
-      notes.push(d.locked ? "Klikk for å fjerne" : "Klikk for å legge inn som feriedag");
-    } else {
-      node = el("span", classes.join(" "), String(d.date.getUTCDate()));
+      notes.push(d.locked ? "Klikk for å fjerne"
+        : (past ? "Klikk hvis du har tatt fri denne dagen" : "Klikk for å velge, dobbeltklikk for å fylle perioden"));
     }
+    node.className = classes.join(" ");
+    node.setAttribute("aria-disabled", clickable ? "false" : "true");
+    node.setAttribute("aria-pressed", d.locked ? "true" : "false");
     var label = fmtLong.format(d.date) + (notes.length ? " – " + notes.join(". ") : "");
     node.title = label;
     node.setAttribute("aria-label", label);
-    td.appendChild(node);
   }
 
-  function toggleOwn(d) {
-    if (state.own[d.key]) delete state.own[d.key];
-    else state.own[d.key] = true;
-    update();
+  // ---------- Klikk og dobbeltklikk i kalenderen ----------
+
+  function isClickable(node) {
+    return node && node.getAttribute("aria-disabled") !== "true";
+  }
+
+  function workdayKeysBetween(a, b) {
+    if (a > b) { var t = a; a = b; b = t; }
+    return lastModel.days.filter(function (d) {
+      return d.key >= a && d.key <= b && !d.off && !d.summer && cells[d.key];
+    }).map(function (d) { return d.key; });
+  }
+
+  function bindCalendar() {
+    var cal = document.getElementById("calendar");
+
+    cal.addEventListener("click", function (e) {
+      var node = e.target.closest("button.day");
+      if (!isClickable(node)) return;
+      // Andre klikk i et dobbeltklikk håndteres av dblclick under.
+      if (e.detail > 1) return;
+      var key = node.getAttribute("data-key");
+      if (e.shiftKey && anchor) {
+        workdayKeysBetween(anchor, key).forEach(function (k) { state.own[k] = true; });
+        anchor = key;
+        update();
+        return;
+      }
+      anchorBeforeClick = anchor;
+      if (state.own[key]) {
+        delete state.own[key];
+        anchor = null;
+      } else {
+        state.own[key] = true;
+        anchor = key;
+      }
+      update();
+    });
+
+    cal.addEventListener("dblclick", function (e) {
+      var node = e.target.closest("button.day");
+      if (!isClickable(node)) return;
+      var key = node.getAttribute("data-key");
+      var from = anchorBeforeClick && anchorBeforeClick !== key ? anchorBeforeClick : key;
+      workdayKeysBetween(from, key).forEach(function (k) { state.own[k] = true; });
+      anchor = key;
+      anchorBeforeClick = null;
+      update();
+    });
   }
 
   // ---------- Skjema ----------
@@ -415,6 +583,9 @@
       summerWeeks: document.getElementById("summer-weeks"),
       julaften: document.getElementById("opt-julaften"),
       nyttarsaften: document.getElementById("opt-nyttarsaften"),
+      schoolOn: document.getElementById("school-on"),
+      winterWeek: document.getElementById("winter-week"),
+      autumnWeek: document.getElementById("autumn-week"),
       showSuggestions: document.getElementById("show-suggestions"),
       showValues: document.getElementById("show-values")
     };
@@ -427,6 +598,9 @@
     inputs.summerWeeks.value = state.summerWeeks;
     inputs.julaften.checked = state.julaften;
     inputs.nyttarsaften.checked = state.nyttarsaften;
+    inputs.schoolOn.checked = state.schoolOn;
+    inputs.winterWeek.value = state.winterWeek;
+    inputs.autumnWeek.value = state.autumnWeek;
     inputs.showSuggestions.checked = state.showSuggestions;
     inputs.showValues.checked = state.showValues;
 
@@ -439,6 +613,9 @@
       state.summerWeeks = clampInt(inputs.summerWeeks.value, 1, 6, 3);
       state.julaften = inputs.julaften.checked;
       state.nyttarsaften = inputs.nyttarsaften.checked;
+      state.schoolOn = inputs.schoolOn.checked;
+      state.winterWeek = clampInt(inputs.winterWeek.value, 6, 11, 8);
+      state.autumnWeek = clampInt(inputs.autumnWeek.value, 38, 44, 40);
       state.showSuggestions = inputs.showSuggestions.checked;
       state.showValues = inputs.showValues.checked;
       update();
@@ -459,6 +636,7 @@
 
     document.getElementById("reset-own").addEventListener("click", function () {
       state.own = {};
+      anchor = anchorBeforeClick = null;
       update();
     });
   }
@@ -467,6 +645,7 @@
     var model = compute();
     lastModel = model;
     document.getElementById("summer-fields").classList.toggle("disabled", !state.summerOn);
+    document.getElementById("school-fields").classList.toggle("disabled", !state.schoolOn);
     renderYearPicker();
     renderWorkdays();
     renderSummary(model);
@@ -476,5 +655,6 @@
 
   load();
   bindForm();
+  bindCalendar();
   update();
 })();

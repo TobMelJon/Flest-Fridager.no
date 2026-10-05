@@ -8,6 +8,11 @@ En nettside som hjelper deg å planlegge feriedagene slik at du får flest mulig
 * Verdikart som viser hvilke dager som er mest verdt å ta fri
 * Forslag som bare bruker feriedagene som faktisk gir ekstra fridager – resten plasserer du selv
 * Sett av sommerferie, og klikk på dager i kalenderen for å legge inn egne feriedager
+  (dobbeltklikk på en senere dag fyller hele perioden fra dagen du klikket sist)
+* Registrer ferie du allerede har tatt ut ved å klikke på dager som har vært
+* Live verdi: viser hva du får ved å legge til dager rundt det du har valgt
+  («+2 feriedager → 9 dager fri i stedet for 5»)
+* Skoleferier (vinterferie, påske, sommer, høstferie, jul) i kalenderen
 * Valg som påvirker verdien: hvilke dager du jobber, fri på julaften/nyttårsaften,
   hvor mange feriedager du vil bruke på én fri og hvor kresen du er
 
@@ -60,6 +65,8 @@ Brukerens valg påvirker verdien:
 `planner.js` har tre deler:
 
 * `dayValues()` lager verdikartet: for hver dag det beste uttaket den inngår i.
+* `extensionOptions()` finner hva egne perioder vokser til hvis du legger til dager
+  rett før eller etter dem. Dette inngår også i verdikartet.
 * `optimize()` velger de verdifulle uttakene som til sammen gir mest bonus innenfor
   budsjettet. Den løses eksakt med dynamisk programmering, og testene sjekker den mot
   brute force. Dager uten bonus brukes ikke, så feriedager blir stående igjen til deg.

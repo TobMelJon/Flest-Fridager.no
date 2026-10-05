@@ -262,14 +262,86 @@
   }
 
   /*
+   * Utvidelser av egne friperioder: hva du får ved å legge til noen feriedager
+   * rett før eller etter en periode du allerede har lagt inn. Tar du f.eks.
+   * onsdag–fredag (5 dager fri), gir mandag–tirsdag samme uke 9 dager fri.
+   * Tas bare med når periodene vokser mer enn antall dager du legger til.
+   *
+   * Returnerer [{ start, end, length, options: [{ cost, gain, length, start, end, take }] }]
+   * der `take` er indeksene til dagene som må legges til.
+   */
+  function extensionOptions(days, options) {
+    var opts = normalizeOptions(options);
+    var n = days.length;
+    var K = opts.maxCost;
+    var free = days.map(function (d) { return d.off || d.locked; });
+    var runs = [];
+    for (var s = 0; s < n; s++) {
+      if (!free[s]) continue;
+      var e = s;
+      var hasLocked = false;
+      while (e < n && free[e]) { if (days[e].locked) hasLocked = true; e++; }
+      if (hasLocked) runs.push([s, e]);
+      s = e - 1;
+    }
+
+    return runs.map(function (run) {
+      var s = run[0], e = run[1];
+      var left = [], right = [];
+      for (var i = s - 1; i >= 0 && left.length < K; i--) {
+        if (free[i]) continue;
+        if (!days[i].takeable) break;
+        left.push(i);
+      }
+      for (var j = e; j < n && right.length < K; j++) {
+        if (free[j]) continue;
+        if (!days[j].takeable) break;
+        right.push(j);
+      }
+      var list = [];
+      for (var a = 0; a <= left.length; a++) {
+        for (var b = 0; b <= right.length && a + b <= K; b++) {
+          if (a + b === 0) continue;
+          var L = a ? left[a - 1] : s;
+          while (L > 0 && free[L - 1]) L--;
+          var R = b ? right[b - 1] + 1 : e;
+          while (R < n && free[R]) R++;
+          var gain = (R - L) - (e - s) - (a + b);
+          if (gain < 1) continue;
+          list.push({
+            cost: a + b,
+            gain: gain,
+            length: R - L,
+            start: days[L].key,
+            end: days[R - 1].key,
+            take: left.slice(0, a).concat(right.slice(0, b)).sort(function (x, y) { return x - y; })
+          });
+        }
+      }
+      list.sort(function (x, y) { return (y.gain / y.cost) - (x.gain / x.cost) || y.gain - x.gain || x.cost - y.cost; });
+      return { start: days[s].key, end: days[e - 1].key, length: e - s, options: list };
+    });
+  }
+
+  /*
    * Verdikart: for hver dag som kan tas som ferie, det beste uttaket den inngår i
    * (høyest bonus per feriedag, deretter høyest bonus). null = ingen bonus.
-   * Hvert element: { ratio, gain, cost, start, end, length }.
+   * Hvert element: { ratio, gain, cost, start, end, length, extends }, der
+   * `extends` er lengden på egen periode som utvides (eller undefined).
    */
   function dayValues(days, options) {
     var opts = normalizeOptions(options);
     var ctx = prepare(days, opts.workdays, opts.maxCost);
     var values = new Array(days.length).fill(null);
+
+    function offer(d, v) {
+      var cur = values[d];
+      if (!cur || v.ratio > cur.ratio + 1e-9 ||
+          (Math.abs(v.ratio - cur.ratio) < 1e-9 && v.gain > cur.gain)) {
+        values[d] = v;
+      }
+    }
+
     for (var i = 0; i < days.length; i++) {
       if (!days[i].takeable) continue;
       eachSegmentFrom(days, ctx, i, opts.maxCost, function (j, cost, L, R, gain) {
@@ -279,15 +351,21 @@
           start: days[L].key, end: days[R - 1].key, length: R - L
         };
         for (var d = i; d <= j; d++) {
-          if (ctx.free[d]) continue;
-          var cur = values[d];
-          if (!cur || v.ratio > cur.ratio + 1e-9 ||
-              (Math.abs(v.ratio - cur.ratio) < 1e-9 && v.gain > cur.gain)) {
-            values[d] = v;
-          }
+          if (!ctx.free[d]) offer(d, v);
         }
       });
     }
+
+    // Live verdi rundt egne feriedager.
+    extensionOptions(days, opts).forEach(function (run) {
+      run.options.forEach(function (o) {
+        var v = {
+          ratio: o.gain / o.cost, gain: o.gain, cost: o.cost,
+          start: o.start, end: o.end, length: o.length, extends: run.length
+        };
+        o.take.forEach(function (d) { offer(d, v); });
+      });
+    });
     return values;
   }
 
@@ -336,6 +414,7 @@
     markSqueezeDays: markSqueezeDays,
     baselineTable: baselineTable,
     optimize: optimize,
+    extensionOptions: extensionOptions,
     dayValues: dayValues,
     vacationPeriods: vacationPeriods
   };

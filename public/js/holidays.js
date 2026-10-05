@@ -77,6 +77,39 @@
     };
   }
 
+  // Mandag i ISO-uke `week` for `year`.
+  function mondayOfIsoWeek(year, week) {
+    var jan4 = makeDate(year, 1, 4);
+    var monday = addDays(jan4, -((jan4.getUTCDay() + 6) % 7));
+    return addDays(monday, (week - 1) * 7);
+  }
+
+  /*
+   * Skoleferier for et skoleår som slutter i `year`. Vinter- og høstferie
+   * varierer mellom kommuner, så uken velges av brukeren. Jul og sommer er
+   * omtrentlige (approx) fordi skolerutene varierer litt fra sted til sted.
+   * Returnerer [{ name, start, end, approx }].
+   */
+  function schoolHolidays(year, options) {
+    options = options || {};
+    var winterWeek = options.winterWeek || 8;
+    var autumnWeek = options.autumnWeek || 40;
+    var easter = easterSunday(year);
+    var list = [];
+    function add(name, start, end, approx) {
+      list.push({ name: name, start: toKey(start), end: toKey(end), approx: !!approx });
+    }
+    var winter = mondayOfIsoWeek(year, winterWeek);
+    add("Vinterferie", winter, addDays(winter, 4));
+    // Fra lørdag før palmesøndag til og med andre påskedag.
+    add("Påskeferie", addDays(easter, -8), addDays(easter, 1));
+    add("Sommerferie", makeDate(year, 6, 20), makeDate(year, 8, 16), true);
+    var autumn = mondayOfIsoWeek(year, autumnWeek);
+    add("Høstferie", autumn, addDays(autumn, 4));
+    add("Juleferie", makeDate(year, 12, 21), makeDate(year + 1, 1, 1), true);
+    return list;
+  }
+
   var api = {
     makeDate: makeDate,
     addDays: addDays,
@@ -84,7 +117,9 @@
     fromKey: fromKey,
     easterSunday: easterSunday,
     norwegianHolidays: norwegianHolidays,
-    optionalDaysOff: optionalDaysOff
+    optionalDaysOff: optionalDaysOff,
+    mondayOfIsoWeek: mondayOfIsoWeek,
+    schoolHolidays: schoolHolidays
   };
 
   if (typeof module !== "undefined" && module.exports) {
